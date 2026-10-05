@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мафия · HUD</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --red:#c41e3a; --accent:#c41e3a; --accent-glow:rgba(196,30,58,.22); --don:#8977fe; --brass:#c9a44c; --foul:#f2c230; --hot:#ff5a6e;
+  --plate:rgba(22,22,27,.92); --paper:#f5f5f0; --muted:#a09d95;
+  --f-display:'Oswald','Arial Narrow','Roboto Condensed',Arial,sans-serif;
+  --f-ui:'Inter','Segoe UI',Roboto,Arial,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+
+/* ================= OVERLAY 1920x1080 ================= */
+body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;font-family:var(--f-display);color:var(--paper)}
+#stage{position:relative;width:1920px;height:1080px}
+
+.info{position:absolute;left:40px;top:36px;display:flex;background:var(--plate);transform-origin:0 0}
+.info::before{content:"";width:6px;background:var(--accent)}
+.info .in{padding:10px 24px 12px}
+.info .t{font-size:36px;font-weight:600;line-height:1.05}
+.info .g{font-size:21px;color:var(--muted);margin-top:4px}
+
+/* ночи: отстрел и проверки шерифа */
+.nights{position:absolute;right:40px;top:36px;background:var(--plate);display:none;transform-origin:100% 0}
+.nights.on{display:block}
+.nights .hd,.nights .nr{display:grid;grid-template-columns:62px repeat(3,64px);column-gap:4px;align-items:center}
+.nights .hd{padding:8px 12px;font-size:13px;color:var(--muted);letter-spacing:.03em;border-bottom:3px solid var(--accent)}
+.nights .hd span{display:flex;flex-direction:column;align-items:center;gap:2px}
+.nights .hd svg{width:22px;height:22px}
+.nights .nr{padding:6px 12px;border-bottom:1px solid rgba(255,255,255,.06);min-height:48px}
+.nights .nr:last-child{border-bottom:0}
+.nights .nn{font-size:18px;color:var(--muted)}
+.nights .cell{display:flex;align-items:center;justify-content:center;gap:8px;font-size:22px}
+.nights .chip{width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;background:var(--paper);color:#111}
+.nights .chip.red{background:var(--red);color:#fff}
+.nights .chip.black{background:#000;color:#fff;box-shadow:inset 0 0 0 2px rgba(255,255,255,.4)}
+.nights .chip.sher{background:var(--brass);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45)}
+.nights .chip.nosher{background:#4a4a52;color:#fff}
+.ic-crown{fill:var(--don)}
+.nights .res{font-size:19px;color:var(--muted)}
+.nights .miss{width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08)}
+.nights .miss svg{width:26px;height:26px;fill:none;stroke:var(--paper);stroke-width:2.6;stroke-linecap:round}
+.nights .none{color:#5c5a55;font-size:22px}
+.ic-shot{fill:none;stroke:var(--hot);stroke-width:2;stroke-linecap:round}
+.ic-star{fill:var(--brass)}
+
+/* плашки игроков */
+#stage{--th:236px;--ts:1;--gap:12px;--mb:30px;--side:40px}
+.row{position:absolute;left:var(--side);right:var(--side);bottom:var(--mb);display:flex;gap:var(--gap)}
+.tile{position:relative;flex:1;min-width:0;height:var(--th)}
+.tile .body{position:absolute;inset:0;background:#1a1a1f;overflow:hidden;transition:filter .35s,opacity .35s}
+.tile .ph{position:absolute;left:0;right:0;top:0;bottom:calc(42px*var(--ts));background:#26262c center top/cover no-repeat}
+.tile .ph svg{position:absolute;left:12%;bottom:0;width:76%;fill:#3a3a42}
+.tile .ph::after{content:"";position:absolute;left:0;right:0;bottom:0;height:calc(40px*var(--ts));background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.6))}
+.tile .accent{position:absolute;left:0;right:0;top:0;height:4px;background:var(--red)}
+.tile.team-black .accent{background:#000}
+.tile.r-sheriff .accent{background:var(--brass)}
+.tile.r-don .accent{background:var(--don)}
+.tile .badge{position:absolute;left:calc(8px*var(--ts));top:calc(12px*var(--ts));width:calc(38px*var(--ts));height:calc(38px*var(--ts));display:none;align-items:center;justify-content:center;font-size:calc(25px*var(--ts));font-weight:700}
+.tile.r-sheriff .badge{display:flex;background:var(--brass);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45)}
+.tile.r-don .badge{display:flex;background:var(--don);color:#fff}
+.tile.r-mafia .badge{display:flex;background:#000;color:#fff;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45)}
+.tile .bot{position:absolute;left:0;right:0;bottom:0;height:calc(42px*var(--ts));display:flex;background:var(--plate)}
+.tile .num{width:calc(42px*var(--ts));flex:none;display:flex;align-items:center;justify-content:center;font-size:calc(26px*var(--ts));font-weight:700;background:var(--red)}
+.tile.team-black .num{background:#000;box-shadow:inset 0 0 0 2px rgba(255,255,255,.35)}
+.tile .nick{flex:1;min-width:0;display:flex;align-items:center;padding:0 calc(10px*var(--ts));font-size:calc(21px*var(--ts));font-weight:500}
+.tile .nick span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tile .st{position:absolute;left:calc(8px*var(--ts));right:calc(8px*var(--ts));top:calc(62px*var(--ts));height:calc(36px*var(--ts));display:none;align-items:center;justify-content:center;gap:5px;background:rgba(0,0,0,.9);font-size:calc(14px*var(--ts));letter-spacing:.02em;white-space:nowrap;overflow:hidden}
+.tile .st svg{width:calc(20px*var(--ts));height:calc(20px*var(--ts));flex:none;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.tile.s-killed .st svg{stroke:var(--hot)}
+.tile.s-voted .st svg{stroke:var(--foul)}
+.tile.out .body{filter:grayscale(1);opacity:.45}
+.tile.out .st{display:flex}
+
+/* ================= PANEL ================= */
+body.panel{background:#121216;color:#e9e7e2;font-family:var(--f-ui);font-size:13px;color-scheme:dark;min-height:100%}
+.panel button,.panel input,.panel select{font:inherit;color:inherit}
+.panel button{background:#26262d;border:1px solid #34343c;padding:6px 10px;cursor:pointer;border-radius:4px;white-space:nowrap}
+.panel button:hover{background:#2f2f38}
+.panel button:focus-visible,.panel input:focus-visible,.panel select:focus-visible,.panel label.thumb:focus-within{outline:2px solid #7aa7ff;outline-offset:1px}
+.panel button.warn{background:#3a2020;border-color:#5a2a2a}
+.panel input,.panel select{background:#1b1b21;border:1px solid #34343c;padding:5px 7px;border-radius:4px;min-width:0}
+.p-head{padding:10px 14px;border-bottom:1px solid #26262d;position:sticky;top:0;background:#121216;z-index:2}
+.p-head h1{font-family:var(--f-display);font-size:20px;font-weight:600}
+.p-grid{display:grid;grid-template-columns:1fr;gap:12px;padding:12px}
+@media (min-width:1050px){.p-grid{grid-template-columns:minmax(560px,1.3fr) 1fr}}
+.box{background:#18181d;border:1px solid #26262d;border-radius:6px;padding:12px;margin-bottom:12px}
+.box h2{font-size:13px;font-weight:600;color:#a09d95;margin-bottom:10px}
+.bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.bar + .bar{margin-top:8px}
+.muted{color:#8a877f}
+.scroll{overflow-x:auto}
+table.pt{width:100%;border-collapse:collapse;min-width:520px}
+.pt th{text-align:left;font-weight:500;color:#8a877f;padding:4px;font-size:12px}
+.pt td{padding:4px;border-top:1px solid #23232a;vertical-align:middle}
+.pt td.n{font-family:var(--f-display);font-size:20px;font-weight:600;width:30px;text-align:center}
+.pt tr.out td.n,.pt tr.out input.nick{opacity:.5}
+.pt input.nick{width:100%}
+.pt td.rc-red select{border-left:3px solid var(--red)}
+.pt td.rc-black select{border-left:3px solid #e8e8e8}
+.pt td.rc-gold select{border-left:3px solid var(--brass)}
+.pt td.rc-don select{border-left:3px solid var(--don)}
+.pt .killed{color:var(--hot);font-weight:500}
+.pc{display:flex;align-items:center;gap:3px}
+label.thumb{display:block;width:36px;height:46px;border-radius:3px;background:#26262c center top/cover no-repeat;cursor:pointer;position:relative;overflow:hidden;border:1px dashed #4a4a52}
+label.thumb.has{border-style:solid;border-color:#34343c}
+label.thumb span{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;color:#6a6a72}
+label.thumb.has span{display:none}
+label.thumb input{position:absolute;opacity:0;width:1px;height:1px}
+.pc button{padding:1px 6px}
+.nt{width:100%;border-collapse:collapse}
+.nt th{text-align:left;font-weight:500;color:#8a877f;padding:4px;font-size:12px}
+.nt td{padding:4px;border-top:1px solid #23232a}
+.nt td:first-child{font-family:var(--f-display);font-size:16px;white-space:nowrap}
+.nt select{width:100%}
+.nt .rs{font-size:12px;white-space:nowrap}
+.nt .rs.red{color:#ff7a8a} .nt .rs.black{color:#fff} .nt .rs.gold{color:var(--brass)}
+.pv{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;background:repeating-conic-gradient(#2a2a30 0 25%,#222228 0 50%) 0 0/24px 24px;border-radius:4px}
+.pv iframe{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;transform-origin:0 0}
+.rl{max-height:460px;overflow:auto}
+.rr{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #23232a}
+.rr input.rn{flex:1}
+.rr .seat{font-size:12px;color:#8a877f;min-width:62px;text-align:right}
+.mini{width:30px;height:38px;border-radius:3px;background:#26262c center top/cover no-repeat;flex:none;position:relative;overflow:hidden}
+.mini svg{position:absolute;left:10%;bottom:0;width:80%;fill:#3a3a42}
+.pt select.who{width:100%;min-width:150px}
+.ac-row{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:8px}
+.ac-row input[type=color]{width:44px;height:30px;padding:2px;cursor:pointer}
+.ac-sw{width:26px;height:26px;padding:0!important;border-radius:50%!important;border:2px solid #34343c!important}
+.sz{display:grid;grid-template-columns:190px 1fr 56px;gap:6px 10px;align-items:center}
+.sz input[type=range]{padding:0;width:100%}
+.sz output{font-variant-numeric:tabular-nums;text-align:right;color:#a09d95}
+textarea{width:100%;min-height:80px;background:#1b1b21;border:1px solid #34343c;border-radius:4px;padding:6px 8px;color:inherit;font:inherit;resize:vertical}
+
+/* ================= SCENES (ожидание / победа) ================= */
+body.scene{width:1920px;height:1080px;overflow:hidden;background:transparent;font-family:var(--f-display);color:var(--paper)}
+body.scene #stage{display:flex;flex-direction:column;align-items:center;justify-content:center}
+.bg-wait{background:
+  radial-gradient(ellipse 60% 55% at 50% 42%,var(--accent-glow),rgba(0,0,0,0) 70%),
+  repeating-linear-gradient(135deg,rgba(255,255,255,.018) 0 2px,rgba(255,255,255,0) 2px 22px),
+  #0f0f13}
+.bg-dim{background:rgba(8,8,10,.72)}
+.appear{opacity:0;transform:translateY(18px);animation:appear .7s cubic-bezier(.2,.7,.2,1) forwards}
+.d1{animation-delay:.1s}.d2{animation-delay:.25s}.d3{animation-delay:.4s}.d4{animation-delay:.55s}
+@keyframes appear{to{opacity:1;transform:none}}
+.sc-label{display:flex;background:var(--plate)}
+.sc-label::before{content:"";width:6px;background:var(--accent)}
+.sc-label span{padding:10px 26px 12px;font-size:34px;font-weight:600}
+.sc-game{margin-top:10px;font-size:28px;color:var(--muted);letter-spacing:.04em}
+.wait-word{margin-top:34px;font-size:190px;font-weight:700;line-height:.9;letter-spacing:.04em}
+.sc-timer{margin-top:60px;font-size:120px;font-weight:500;line-height:1;letter-spacing:.03em;font-variant-numeric:tabular-nums;padding:14px 48px 20px;background:var(--plate);border-bottom:5px solid var(--accent)}
+.sc-timer.zero{color:var(--muted)}
+.wtime{font-family:var(--f-display);font-size:40px;font-weight:600;font-variant-numeric:tabular-nums;min-width:120px}
+@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(340%)}}
+.win{margin-top:34px;padding:34px 110px 40px;font-size:150px;font-weight:700;line-height:.95;letter-spacing:.03em;white-space:nowrap;border-top:6px solid var(--brass);border-bottom:6px solid var(--brass)}
+.win.red{background:var(--red)}
+.win.black{background:#000;box-shadow:inset 0 0 0 2px rgba(255,255,255,.25)}
+.sc-sub{margin-top:54px;font-size:24px;color:var(--muted);letter-spacing:.08em}
+.sc-cards{margin-top:16px;display:flex;gap:14px;justify-content:center}
+.card{position:relative;width:156px;height:214px;background:#1a1a1f;overflow:hidden}
+.card .ph{position:absolute;left:0;right:0;top:0;bottom:40px;background:#26262c center top/cover no-repeat}
+.card .ph svg{position:absolute;left:12%;bottom:0;width:76%;fill:#3a3a42}
+.card .ac{position:absolute;left:0;right:0;top:0;height:4px;background:var(--red)}
+.card.team-black .ac{background:#000}
+.card.r-sheriff .ac{background:var(--brass)}
+.card.r-don .ac{background:var(--don)}
+.card .bd{position:absolute;left:8px;top:12px;width:36px;height:36px;display:none;align-items:center;justify-content:center;font-size:24px;font-weight:700}
+.card.r-sheriff .bd{display:flex;background:var(--brass);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45)}
+.card.r-don .bd{display:flex;background:var(--don);color:#fff}
+.card.r-mafia .bd{display:flex;background:#000;color:#fff;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45)}
+.card .bt{position:absolute;left:0;right:0;bottom:0;height:40px;display:flex;background:var(--plate)}
+.card .n{width:40px;flex:none;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;background:#34343c}
+.card.team-red .n{background:var(--red)}
+.card.team-black .n{background:#000;box-shadow:inset 0 0 0 2px rgba(255,255,255,.35)}
+.card .nk{flex:1;min-width:0;display:flex;align-items:center;padding:0 9px;font-size:20px;font-weight:500}
+.card .nk span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hide{display:none!important}
+
+/* связь в пульте */
+.conn .dot{display:inline-block;width:10px;height:10px;border-radius:50%;background:#666;margin-right:6px;vertical-align:middle}
+.conn .dot.ok{background:#3ecf6e} .conn .dot.bad{background:var(--hot)} .conn .dot.wait{background:var(--foul)}
+.conn .st{font-weight:600}
+.conn .fl3{display:grid;grid-template-columns:1fr 90px 1fr auto;gap:6px;margin-top:8px}
+.conn .disp{margin-top:8px}
+.conn .disp span{display:inline-block;margin-right:10px}
+.conn .disp .on{color:#3ecf6e} .conn .disp .off{color:#6a6a72}
+
+#hint{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:#121216;font-family:var(--f-ui);color:#e9e7e2}
+#hint .hint-box{max-width:560px;padding:32px 36px;background:#18181d;border:1px solid #26262d;border-radius:8px}
+#hint h1{font-family:var(--f-display);font-size:30px;font-weight:600;margin-bottom:14px}
+#hint p{font-size:16px;line-height:1.5;color:#c9c6bf;margin-bottom:10px}
+#hint b{color:#fff}
+#hint button{margin-top:10px;font:600 16px var(--f-ui);color:#fff;background:var(--red);border:0;border-radius:4px;padding:10px 18px;cursor:pointer}
+#hint button:focus-visible{outline:2px solid #7aa7ff;outline-offset:2px}
+</style>
+</head>
+<body>
+<script>
+/* ================= ОБЩЕЕ ================= */
+const FORCE_MODE='black';
+const KEY='mafiaHudState.v4', PKEY='mafiaHudPhoto.v4.';
+const VKEY='mafiaHudView.v5', VPKEY='mafiaHudViewPhoto.v5.', WSKEY='mafiaHudWs.v5';
+const qs=new URLSearchParams(location.search);
+const MODE=FORCE_MODE||((/panel/i.test(location.hash)||qs.has('panel'))?'panel':((location.hash.match(/wait|red|black/)||[])[0]||'overlay'));
+const ROLES={civ:{t:'Мирный',team:'red',b:''},sheriff:{t:'Шериф',team:'red',b:'Ш'},mafia:{t:'Мафия',team:'black',b:'М'},don:{t:'Дон',team:'black',b:'Д'}};
+const IC={
+  shot:'<svg viewBox="0 0 24 24" class="ic-shot"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>',
+  crown:'<svg viewBox="0 0 24 24" class="ic-crown"><path d="M3 7l4.5 4.5L12 4l4.5 7.5L21 7l-2 12H5z"/></svg>',
+  star:'<svg viewBox="0 0 24 24" class="ic-star"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17l-6.1 3.4 1.5-6.8L2.2 9l6.9-.7z"/></svg>',
+  hand:'<svg viewBox="0 0 24 24"><path d="M8 12V5.5a1.5 1.5 0 013 0V11m0-6.5V3.5a1.5 1.5 0 013 0V11m0-6a1.5 1.5 0 013 0v6.5m0-3a1.5 1.5 0 013 0V15a7 7 0 01-7 7h-1.5a7 7 0 01-5.3-2.4l-2.7-3.1a1.6 1.6 0 012.3-2.2L8 15.5"/></svg>',
+  cross:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>'
+};
+const UI_DEF={th:236,ts:1,gap:12,mb:30,side:40,ns:1,is:1};
+const UI_FIELDS=[
+  ['th','Высота плашек игроков',120,400,2,'px'],
+  ['ts','Размер подписей на плашках',.6,1.8,.05,'×'],
+  ['gap','Промежуток между плашками',0,40,1,'px'],
+  ['mb','Отступ плашек от низа',0,200,1,'px'],
+  ['side','Отступ плашек от краёв',0,200,1,'px'],
+  ['ns','Размер таблицы ночей',.5,1.6,.05,'×'],
+  ['is','Размер плашки с названием',.5,1.6,.05,'×']
+];
+const ACCENT_DEF='#c41e3a';
+const ACCENTS=['#c41e3a','#e8590c','#f2c230','#2f9e44','#1c7ed6','#8977fe','#d6336c','#e8e8e8'];
+const okColor=c=>/^#[0-9a-f]{6}$/i.test(c||'');
+function applyAccent(c){
+  c=okColor(c)?c:ACCENT_DEF;
+  const r=parseInt(c.slice(1,3),16),g=parseInt(c.slice(3,5),16),b=parseInt(c.slice(5,7),16),st=document.documentElement.style;
+  st.setProperty('--accent',c);st.setProperty('--accent-glow',`rgba(${r},${g},${b},.22)`);
+}
+const SIL='<svg viewBox="0 0 100 120" aria-hidden="true"><circle cx="50" cy="42" r="22"/><path d="M8 120c0-30 19-50 42-50s42 20 42 50z"/></svg>';
+const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
+function lsSet(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v);return true}catch(e){return false}}
+function loadJSON(k){const r=lsGet(k);try{return r?JSON.parse(r):null}catch(e){return null}}
+const CLIENT=Math.random().toString(36).slice(2);
+
+/* ---- Связь: WebSocket-сервер OBS (основной канал) + BroadcastChannel (запасной) ---- */
+const Net=(()=>{
+  let cfg=Object.assign({host:'localhost',port:4455,pw:''},loadJSON(WSKEY)||{});
+  if(qs.get('host'))cfg.host=qs.get('host');
+  if(qs.get('port'))cfg.port=+qs.get('port');
+  if(qs.has('pw'))cfg.pw=qs.get('pw');
+  let ws=null,ready=false,status='connecting',timer=null;
+  const handlers=[],statusCbs=[],openCbs=[];
+  let bc=null;try{bc=new BroadcastChannel('mafia-hud-v5');bc.onmessage=e=>deliver(e.data)}catch(e){}
+  function deliver(m){if(m&&m.app==='mafiahud'&&m.from!==CLIENT)handlers.forEach(h=>{try{h(m)}catch(e){console.error(e)}})}
+  function setStatus(s){status=s;statusCbs.forEach(f=>f(s))}
+  async function sha(s){const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));let b='';new Uint8Array(h).forEach(x=>b+=String.fromCharCode(x));return btoa(b)}
+  function retry(ms){clearTimeout(timer);timer=setTimeout(connect,ms||3000)}
+  function connect(){
+    clearTimeout(timer);
+    if(ws){ws.onclose=null;ws.onmessage=null;try{ws.close()}catch(e){}}
+    ready=false;setStatus('connecting');
+    let me;
+    try{me=ws=new WebSocket('ws://'+cfg.host+':'+cfg.port)}catch(e){setStatus('off');retry();return}
+    me.onmessage=async ev=>{
+      let m;try{m=JSON.parse(ev.data)}catch(e){return}
+      if(m.op===0){
+        const d={rpcVersion:1,eventSubscriptions:1};
+        const a=m.d&&m.d.authentication;
+        if(a){
+          if(!cfg.pw){setStatus('needpw');me.onclose=null;try{me.close()}catch(e){}retry(10000);return}
+          try{d.authentication=await sha((await sha(cfg.pw+a.salt))+a.challenge)}catch(e){setStatus('nocrypto');return}
+        }
+        me.send(JSON.stringify({op:1,d}));
+      }else if(m.op===2){ready=true;setStatus('ok');openCbs.forEach(f=>f())}
+      else if(m.op===5&&m.d&&m.d.eventType==='CustomEvent'){deliver(m.d.eventData)}
+    };
+    me.onclose=ev=>{ready=false;if(ev.code===4009){setStatus('badpw');retry(10000)}else{setStatus('off');retry(3000)}};
+    me.onerror=()=>{};
+  }
+  function send(obj){
+    const m=Object.assign({app:'mafiahud',from:CLIENT},obj);
+    try{bc&&bc.postMessage(m)}catch(e){}
+    if(ready&&ws&&ws.readyState===1){
+      try{ws.send(JSON.stringify({op:6,d:{requestType:'BroadcastCustomEvent',requestId:Math.random().toString(36).slice(2),requestData:{eventData:m}}}))}catch(e){}
+    }
+  }
+  return {connect,send,on:h=>handlers.push(h),onStatus:f=>statusCbs.push(f),onOpen:f=>openCbs.push(f),
+    get status(){return status},get cfg(){return cfg},
+    setCfg(c){Object.assign(cfg,c);lsSet(WSKEY,JSON.stringify({host:cfg.host,port:cfg.port,pw:cfg.pw}));connect()}};
+})();
+</script>
+<script>
+/* ================= СОСТОЯНИЕ ПУЛЬТА ================= */
+const newId=()=>'p'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const emptySeat=pid=>({pid:pid||'',role:'civ',status:'alive'});
+function defaultState(){
+  const roster=Array.from({length:10},(_,i)=>({id:newId()+i,nick:'Игрок '+(i+1)}));
+  return {v:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,photoVer:0,wait:{show:false,running:false,endAt:0,left:600000,total:600000}};
+}
+let S=null,photos={},renderFn=()=>{},publish=()=>{};
+if(MODE==='panel'){
+  S=loadJSON(KEY);
+  if(!S){
+    S=defaultState();
+    const old=loadJSON('mafiaHudState.v3')||loadJSON('mafiaHudState.v2');
+    if(old&&Array.isArray(old.players)){
+      S.roster=old.players.map((p,i)=>({id:newId()+i,nick:p.nick||('Игрок '+(i+1))}));
+      S.seats=S.roster.map((r,i)=>({pid:r.id,role:old.players[i].role||'civ',status:old.players[i].status==='voted'?'voted':'alive'}));
+      S.roster.forEach((r,i)=>{const ph=lsGet('mafiaHudPhoto.v2.'+i);if(ph)lsSet(PKEY+r.id,ph)});
+    }
+    S.v=1;lsSet(KEY,JSON.stringify(S));
+  }
+  S=Object.assign(defaultState(),S);
+  S.ui=Object.assign({},UI_DEF,S.ui);
+  S.roster.forEach(r=>{const p=lsGet(PKEY+r.id);if(p)photos[r.id]=p});
+}
+function waitLeft(){const w=S.wait;return w.running?Math.max(0,w.endAt-Date.now()):Math.max(0,w.left)}
+const fmtT=ms=>{let t=Math.ceil(ms/1000);const h=Math.floor(t/3600),m=Math.floor(t%3600/60),sec=t%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(sec).padStart(2,'0')};
+function commit(){S.v=Date.now();lsSet(KEY,JSON.stringify(S));publish();renderFn()}
+const person=id=>S.roster.find(r=>r.id===id)||null;
+const seatNick=i=>{const p=person(S.seats[i].pid);return p?p.nick:''};
+const seatPhoto=i=>photos[S.seats[i].pid]||null;
+const team=i=>ROLES[S.seats[i].role].team;
+function shotNight(i){return S.nights.findIndex(n=>n.shot===String(i))}
+function statusOf(i){return shotNight(i)>=0?'killed':(S.seats[i].status==='voted'?'voted':'alive')}
+</script>
+<!-- ================= ЭКРАНЫ: оверлей и сцены ================= -->
+<script>
+if(MODE!=='panel'){
+  let V=loadJSON(VKEY);
+  const pc={};
+  const photo=pid=>{if(!pid)return null;if(!(pid in pc))pc[pid]=lsGet(VPKEY+pid)||lsGet(PKEY+pid)||null;return pc[pid]};
+  const vTeam=i=>ROLES[(V.seats[i]||{}).role||'civ'].team;
+  let draw=()=>{};
+
+  function prune(){
+    if(!V||!V.seats)return;
+    const keep=new Set(V.seats.map(s=>s.pid).filter(Boolean));
+    try{for(let k=localStorage.length-1;k>=0;k--){const key=localStorage.key(k);if(key&&key.startsWith(VPKEY)&&!keep.has(key.slice(VPKEY.length)))localStorage.removeItem(key)}}catch(e){}
+  }
+  function applyView(v){
+    if(!v||!v.t||(V&&V.t===v.t))return;
+    V=v;lsSet(VKEY,JSON.stringify(v));prune();draw();
+  }
+  Net.on(m=>{
+    if(m.kind==='view')applyView(m.view);
+    else if(m.kind==='photo'){pc[m.pid]=m.data||null;lsSet(VPKEY+m.pid,m.data||null);draw()}
+    else if(m.kind==='ping')Net.send({kind:'pong',mode:MODE});
+  });
+  Net.onOpen(()=>Net.send({kind:'hello',mode:MODE}));
+  addEventListener('storage',e=>{if(e.key===VKEY)applyView(loadJSON(VKEY))});
+  setInterval(()=>applyView(loadJSON(VKEY)),1000);
+
+  /* ---------- оверлей ---------- */
+  if(MODE==='overlay'){
+    document.body.className='overlay';
+    document.body.innerHTML=`<div id="stage">
+      <div class="info"><div class="in"><div class="t"></div><div class="g"></div></div></div>
+      <div class="nights"></div><div class="row"></div></div>`;
+    const stage=document.getElementById('stage'),q=s=>stage.querySelector(s),row=q('.row');
+    const tiles=Array.from({length:10},(_,i)=>{
+      const t=document.createElement('div');
+      t.innerHTML=`<div class="body"><div class="ph"></div><div class="accent"></div><div class="badge"></div>
+        <div class="bot"><div class="num">${i+1}</div><div class="nick"><span></span></div></div></div><div class="st"></div>`;
+      row.appendChild(t);return t;
+    });
+    const paint=(el,p)=>{if(el._p===p)return;el._p=p;el.style.backgroundImage=p?`url("${p}")`:'none';el.innerHTML=p?'':SIL};
+    draw=function(){
+      applyAccent(V&&V.accent);
+      stage.style.visibility=V?'visible':'hidden';
+      // Подсказка, если файл открыли в обычном браузере, а не в OBS
+      let hint=document.getElementById('hint');
+      if(!V&&!window.obsstudio){
+        if(!hint){
+          hint=document.createElement('div');hint.id='hint';
+          hint.innerHTML=`<div class="hint-box"><h1>Это HUD для OBS</h1>
+            <p>Сам по себе HUD прозрачный и показывается только в OBS, поверх камеры. Пока пульт не отправил данные, здесь пусто.</p>
+            <p>Чтобы открыть пульт, допишите в конце адреса <b>#panel</b> или нажмите кнопку.</p>
+            <button id="toPanel">Открыть пульт</button></div>`;
+          document.body.appendChild(hint);
+          document.getElementById('toPanel').onclick=()=>{location.hash='panel';location.reload()};
+        }
+      }else if(hint)hint.remove();
+      if(!V)return;
+      const u=Object.assign({},UI_DEF,V.ui||{});
+      stage.style.setProperty('--th',u.th+'px');stage.style.setProperty('--ts',u.ts);
+      stage.style.setProperty('--gap',u.gap+'px');stage.style.setProperty('--mb',u.mb+'px');stage.style.setProperty('--side',u.side+'px');
+      q('.nights').style.transform=u.ns===1?'':`scale(${u.ns})`;
+      q('.info').style.transform=u.is===1?'':`scale(${u.is})`;
+      q('.info .t').textContent=V.title||'';
+      q('.info .g').textContent=V.game?'Игра '+V.game:'';
+      q('.info .g').style.display=V.game?'block':'none';
+      q('.info').style.display=(V.title||V.game)?'flex':'none';
+      tiles.forEach((t,i)=>{
+        const s=V.seats[i]||{},role=ROLES[s.role]?s.role:'civ',st=s.status||'alive';
+        t.className=`tile team-${ROLES[role].team} r-${role} s-${st}`+(st!=='alive'?' out':'');
+        paint(t.querySelector('.ph'),photo(s.pid));
+        t.querySelector('.badge').textContent=ROLES[role].b;
+        t.querySelector('.nick span').textContent=s.nick||'—';
+        t.querySelector('.st').innerHTML=st==='killed'?IC.cross+'<span>УБИТ</span>':st==='voted'?IC.hand+'<span>ЗАГОЛОСОВАН</span>':'';
+      });
+      const nb=q('.nights'),ns=V.nights||[];
+      const has=n=>(n.shot||'')!==''||(n.check||'')!==''||(n.don||'')!=='';
+      const used=ns.filter(has);
+      nb.classList.toggle('on',used.length>0);
+      if(!used.length){nb.innerHTML='';return}
+      nb.innerHTML=`<div class="hd"><span></span><span>${IC.shot}Отстрел</span><span>${IC.star}Шериф</span><span>${IC.crown}Дон</span></div>`+
+        ns.map((n,k)=>{
+          if(!has(n))return '';
+          const dash='<span class="none">—</span>',sh=n.shot||'',c=n.check||'',d=n.don||'';
+          const shot=sh===''||sh==='miss'?dash:`<span class="chip">${+sh+1}</span>`;
+          const chk=c===''?dash:`<span class="chip ${vTeam(+c)}">${+c+1}</span>`;
+          const don=d===''?dash:`<span class="chip ${(V.seats[+d]||{}).role==='sheriff'?'sher':'nosher'}">${+d+1}</span>`;
+          return `<div class="nr"><span class="nn">Ночь ${k+1}</span><span class="cell">${shot}</span><span class="cell">${chk}</span><span class="cell">${don}</span></div>`;
+        }).join('');
+    };
+  }
+
+  /* ---------- сцены: ожидание / победа ---------- */
+  else{
+    const CFG={
+      wait:{bg:'bg-wait',sub:'',center:'<div class="sc-timer appear d2 hide" id="scTimer"></div>'},
+      red:{bg:'bg-dim',sub:'КОМАНДА МИРНЫХ',center:'<div class="win red appear d2">ПОБЕДА МИРНЫХ</div>'},
+      black:{bg:'bg-dim',sub:'КОМАНДА МАФИИ',center:'<div class="win black appear d2">ПОБЕДА МАФИИ</div>'}
+    }[MODE];
+    document.title={wait:'Ожидание',red:'Победа мирных',black:'Победа мафии'}[MODE];
+    document.body.className='scene';
+    document.body.innerHTML=`<div id="stage" class="${CFG.bg}">
+      <div class="sc-label appear d1"><span id="scTitle"></span></div>
+      <div class="sc-game appear d1" id="scGame"></div>
+      ${CFG.center}
+      <div class="sc-sub appear d3" id="scSub">${CFG.sub}</div>
+      <div class="sc-cards appear d4" id="scCards"></div></div>`;
+    const $=id=>document.getElementById(id);
+    let sig='';
+    let wEnd=0,wT=null;
+    function tickTimer(){
+      const el=$('scTimer');if(!el)return;
+      const w=V&&V.wait;
+      if(!w||!w.show){el.classList.add('hide');return}
+      if(w!==wT){wT=w;const now=Date.now();wEnd=(w.sentAt||now)+w.remain;if(wEnd-now>w.remain+3000)wEnd=now+w.remain}
+      const left=w.running?Math.max(0,wEnd-Date.now()):w.remain;
+      let t=Math.ceil(left/1000);const h=Math.floor(t/3600),m=Math.floor(t%3600/60),sec=t%60;
+      el.textContent=(h?h+':'+String(m).padStart(2,'0'):m)+':'+String(sec).padStart(2,'0');
+      el.classList.toggle('zero',left<=0);el.classList.remove('hide');
+    }
+    if(MODE==='wait')setInterval(tickTimer,200);
+    draw=function(){
+      applyAccent(V&&V.accent);
+      const title=V?V.title||'':'',g=V&&V.game?'Игра '+V.game:'';
+      $('scTitle').textContent=title;$('scTitle').parentElement.classList.toggle('hide',!title);
+      $('scGame').textContent=g;$('scGame').classList.toggle('hide',!g);
+      if(MODE==='wait')tickTimer();
+      const list=[];
+      if(V&&V.seats)V.seats.forEach((s,i)=>{
+        if(!s.pid)return;const role=ROLES[s.role]?s.role:'civ';
+        if(MODE!=='wait'&&ROLES[role].team===MODE)list.push({i,nick:s.nick,role,ph:photo(s.pid)});
+      });
+      const ns=JSON.stringify(list.map(x=>[x.i,x.nick,x.role,x.ph?x.ph.length:0]));
+      if(ns===sig)return;sig=ns;
+      const roles=MODE!=='wait';
+      $('scCards').innerHTML=list.map(x=>`<div class="card ${roles?`team-${ROLES[x.role].team} r-${x.role}`:''}">
+        <div class="ph"${x.ph?` style="background-image:url('${x.ph}')"`:''}>${x.ph?'':SIL}</div><div class="ac"></div>
+        <div class="bd">${roles?ROLES[x.role].b:''}</div>
+        <div class="bt"><div class="n">${x.i+1}</div><div class="nk"><span>${esc(x.nick)}</span></div></div></div>`).join('');
+      $('scCards').classList.toggle('hide',!list.length);$('scSub').classList.toggle('hide',!list.length);
+    };
+  }
+  draw();
+  Net.connect();
+  Net.send({kind:'hello',mode:MODE});
+}
+</script>
+
+<!-- ================= PANEL ================= -->
+<script>
+if(MODE==='panel'){
+  document.body.className='panel';
+  document.body.innerHTML=`
+  <header class="p-head"><h1>HUD для мафии · пульт</h1></header>
+  <div class="p-grid">
+    <div>
+      <div class="box"><h2>Рассадка на игру</h2>
+        <div class="scroll"><table class="pt"><thead><tr><th>№</th><th></th><th>Игрок</th><th>Роль</th><th>Статус</th></tr></thead><tbody id="rows"></tbody></table></div>
+        <div class="bar muted" style="margin-top:8px">Выберите игрока на каждое место. Если он уже сидит на другом месте, игроки поменяются местами. Убитым игрок становится автоматически, когда вы указываете его в отстреле.</div>
+        <div class="bar"><button data-a="clearSeats">Освободить все места</button></div>
+      </div>
+      <div class="box"><h2>Ночи: отстрел и проверки</h2>
+        <table class="nt"><thead><tr><th></th><th>Отстрел мафии</th><th>Проверка шерифа</th><th>Проверка дона</th><th></th></tr></thead><tbody id="nights"></tbody></table>
+        <div class="bar" style="margin-top:8px"><button data-a="addNight">Добавить ночь</button><span class="muted">Результаты проверок определяются по ролям. На экране красный и чёрный показываются цветом номера, у дона жёлтый номер означает, что он нашёл шерифа.</span></div>
+      </div>
+      <div class="box"><h2>Игра</h2>
+        <div class="bar"><button data-a="newGame" class="warn">Новая игра</button><span class="muted">Сбрасывает роли, статусы и ночи и увеличивает номер игры. Рассадка остаётся.</span></div>
+      </div>
+      <div class="box"><h2>Размеры плашек</h2>
+        <div class="sz" id="sizes"></div>
+        <div class="bar" style="margin-top:8px"><button data-a="uiReset">Сбросить размеры</button><span class="muted">Меняется сразу в оверлее, смотрите в превью ниже.</span></div>
+      </div>
+      <div class="box"><h2>Превью оверлея</h2>
+        <div class="bar"><button id="pvBtn">Показать превью</button><span class="muted">Для проверки. В OBS лучше не включать.</span></div>
+        <div id="pvWrap" style="display:none;margin-top:8px"><div class="pv" id="pv"></div></div>
+      </div>
+    </div>
+    <div>
+      <div class="box conn"><h2>Связь с OBS</h2>
+        <div><span class="dot" id="cDot"></span><span class="st" id="cSt">Подключение…</span></div>
+        <div class="muted" id="cHint" style="margin-top:4px"></div>
+        <div class="fl3"><input id="cHost" aria-label="Адрес"><input id="cPort" type="number" aria-label="Порт"><input id="cPw" type="password" placeholder="пароль, если включён" aria-label="Пароль WebSocket"><button data-a="reconnect">Подключить</button></div>
+        <div class="disp" id="cDisp"></div>
+      </div>
+      <div class="box"><h2>Название турнира</h2>
+        <input id="fTitle" style="width:100%" placeholder="Например: Кубок города, 2 тур" aria-label="Название турнира">
+        <div class="ac-row"><span>Акцентный цвет</span><input type="color" id="fAccent" aria-label="Акцентный цвет турнира">
+          <span id="swatches" class="bar" style="gap:4px"></span><button data-a="accentReset">Сбросить</button></div>
+        <div class="muted" style="margin-top:4px">Цвет полоски у названия, шапки таблицы ночей и заголовков сцен. Цвета команд (красные, чёрные) не меняются.</div>
+        <div class="bar" style="margin-top:8px">Игра <button data-a="gameMinus" aria-label="Предыдущая игра">−</button><input id="fGame" type="number" min="0" style="width:64px" aria-label="Номер игры"><button data-a="gamePlus" aria-label="Следующая игра">+</button><span class="muted">«Новая игра» увеличивает номер сама. 0 скрывает надпись.</span></div>
+      </div>
+      <div class="box"><h2>Игроки турнира</h2>
+        <div class="rl" id="roster"></div>
+        <div class="bar" style="margin-top:8px"><button data-a="addOne">Добавить игрока</button></div>
+        <div style="margin-top:10px">
+          <label class="muted" for="bulk">Добавить списком, по одному нику в строке:</label>
+          <textarea id="bulk" style="margin-top:4px"></textarea>
+          <div class="bar" style="margin-top:6px"><button data-a="addBulk">Добавить список</button></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  const $=s=>document.querySelector(s);
+  const tb=$('#rows');
+  S.seats.forEach((_,i)=>{
+    const tr=document.createElement('tr');tr.dataset.i=i;
+    tr.innerHTML=`<td class="n">${i+1}</td><td><div class="mini"></div></td>
+      <td><select class="who" data-f="pid" aria-label="Игрок на месте ${i+1}"></select></td>
+      <td class="rc"><select data-f="role" aria-label="Роль, место ${i+1}"><option value="civ">Мирный</option><option value="sheriff">Шериф</option><option value="mafia">Мафия</option><option value="don">Дон</option></select></td>
+      <td class="stc"><select data-f="status" aria-label="Статус, место ${i+1}"><option value="alive">В игре</option><option value="voted">Заголосован</option></select><span class="killed"></span></td>`;
+    tb.appendChild(tr);
+  });
+
+  function setPhoto(id,data){
+    if(data){photos[id]=data;if(!lsSet(PKEY+id,data))alert('Фото не сохранилось: в хранилище закончилось место. Удалите лишних игроков или загрузите фото поменьше.')}
+    else{delete photos[id];lsSet(PKEY+id,null)}
+    S.photoVer++;
+  }
+  function processImage(file){
+    return new Promise((res,rej)=>{
+      const fr=new FileReader();
+      fr.onload=()=>{const im=new Image();
+        im.onload=()=>{const W=300,H=400,c=document.createElement('canvas');c.width=W;c.height=H;
+          const x=c.getContext('2d'),s=Math.max(W/im.width,H/im.height),w=im.width*s,h=im.height*s;
+          x.fillStyle='#26262c';x.fillRect(0,0,W,H);x.drawImage(im,(W-w)/2,(H-h)*0.25,w,h);
+          res(c.toDataURL('image/jpeg',0.85))};
+        im.onerror=()=>rej(new Error('Не удалось прочитать изображение'));im.src=fr.result};
+      fr.onerror=rej;fr.readAsDataURL(file);
+    });
+  }
+  const seatOf=id=>S.seats.findIndex(s=>s.pid===id);
+
+  const A={
+    accent(el){S.accent=el.dataset.c},
+    accentReset(){S.accent=ACCENT_DEF},
+    uiReset(){S.ui=Object.assign({},UI_DEF)},
+    addNight(){S.nights.push({shot:'',check:'',don:''})},
+    delNight(el){S.nights.splice(+el.dataset.k,1);if(!S.nights.length)S.nights.push({shot:'',check:'',don:''})},
+    newGame(){if(!confirm('Начать новую игру? Роли, статусы и ночи сбросятся, рассадка останется.'))return;
+      S.seats.forEach(s=>{s.role='civ';s.status='alive'});S.nights=[{shot:'',check:'',don:''}];S.game=(+S.game||0)+1},
+    gamePlus(){S.game=(+S.game||0)+1},
+    gameMinus(){S.game=Math.max(0,(+S.game||0)-1)},
+    wSet(el){const ms=(+el.dataset.m)*60000;Object.assign(S.wait,{running:false,left:ms,total:ms,show:true})},
+    wSetCustom(){const m=parseFloat($('#wMin').value);if(!(m>0))return;const ms=Math.round(m*60)*1000;Object.assign(S.wait,{running:false,left:ms,total:ms,show:true})},
+    wStart(){const w=S.wait;if(w.running){w.left=waitLeft();w.running=false}else if(waitLeft()>0){w.endAt=Date.now()+w.left;w.running=true;w.show=true}},
+    wReset(){S.wait.running=false;S.wait.left=S.wait.total},
+    wAdd(el){const d=+el.dataset.d,w=S.wait;if(w.running)w.endAt=Math.max(Date.now(),w.endAt+d);else w.left=Math.max(0,w.left+d);if(d>0&&!w.running)w.total=Math.max(w.total,w.left)},
+    clearSeats(){if(!confirm('Освободить все 10 мест?'))return;S.seats.forEach(s=>s.pid='')},
+    addOne(){const id=newId();S.roster.push({id,nick:'Новый игрок'});pendingFocus=id},
+    addBulk(){const lines=$('#bulk').value.split('\n').map(x=>x.trim()).filter(Boolean);
+      lines.forEach(n=>S.roster.push({id:newId(),nick:n}));$('#bulk').value=''},
+    delPerson(el){const id=el.dataset.id,p=person(id);if(!p)return;
+      if(!confirm(`Удалить игрока «${p.nick}» из списка турнира?`))return;
+      S.roster=S.roster.filter(r=>r.id!==id);S.seats.forEach(s=>{if(s.pid===id)s.pid=''});setPhoto(id,null)},
+    delPhoto(el){setPhoto(el.dataset.id,null)}
+  };
+  let pendingFocus=null;
+  if(S.nights.some(n=>n.shot==='miss')){S.nights.forEach(n=>{if(n.shot==='miss')n.shot=''});commit()}
+  document.addEventListener('click',e=>{
+    const b=e.target.closest('[data-a]');if(!b)return;
+    const fn=A[b.dataset.a];if(fn){fn(b);commit()}
+  });
+  tb.addEventListener('change',e=>{
+    const i=+e.target.closest('tr').dataset.i,f=e.target.dataset.f,v=e.target.value;
+    if(f==='pid'){const j=v?seatOf(v):-1;if(j>=0&&j!==i)S.seats[j].pid=S.seats[i].pid;S.seats[i].pid=v}
+    if(f==='role')S.seats[i].role=v;
+    if(f==='status')S.seats[i].status=v;
+    commit();
+  });
+  $('#roster').addEventListener('input',e=>{
+    if(!e.target.classList.contains('rn'))return;
+    const p=person(e.target.dataset.id);if(p){p.nick=e.target.value;commit()}
+  });
+  $('#roster').addEventListener('change',async e=>{
+    if(e.target.type!=='file')return;
+    const id=e.target.dataset.id,file=e.target.files&&e.target.files[0];e.target.value='';
+    if(!file)return;
+    try{setPhoto(id,await processImage(file));commit()}catch(err){alert(err.message)}
+  });
+  $('#nights').addEventListener('change',e=>{
+    const k=+e.target.dataset.k,f=e.target.dataset.f;
+    if(S.nights[k]&&f){
+      S.nights[k][f]=e.target.value;
+      // как только в последней ночи появилось любое действие, готовим следующую
+      const last=S.nights[S.nights.length-1];
+      if(k===S.nights.length-1&&(last.shot||last.check||last.don))S.nights.push({shot:'',check:'',don:''});
+      commit();
+    }
+  });
+  $('#sizes').innerHTML=UI_FIELDS.map(([k,l,mn,mx,st])=>`<label for="u_${k}">${l}</label><input type="range" id="u_${k}" data-u="${k}" min="${mn}" max="${mx}" step="${st}"><output id="o_${k}"></output>`).join('');
+  $('#sizes').addEventListener('input',e=>{const k=e.target.dataset.u;if(k){S.ui[k]=+e.target.value;commit()}});
+  $('#fTitle').addEventListener('input',e=>{S.title=e.target.value;commit()});
+  $('#swatches').innerHTML=ACCENTS.map(c=>`<button class="ac-sw" data-a="accent" data-c="${c}" style="background:${c}" title="${c}" aria-label="Цвет ${c}"></button>`).join('');
+  $('#fAccent').addEventListener('input',e=>{S.accent=e.target.value;commit()});
+
+  $('#fGame').addEventListener('input',e=>{const n=parseInt(e.target.value,10);S.game=isNaN(n)||n<0?0:n;commit()});
+
+  let pvOn=false;
+  $('#pvBtn').addEventListener('click',()=>{
+    pvOn=!pvOn;$('#pvWrap').style.display=pvOn?'block':'none';$('#pvBtn').textContent=pvOn?'Скрыть превью':'Показать превью';
+    const pv=$('#pv');
+    if(pvOn&&!pv.firstChild){const f=document.createElement('iframe');f.src=location.href.split('#')[0].split('?')[0];f.title='Превью оверлея';pv.appendChild(f);fitPv()}
+    if(!pvOn)pv.innerHTML='';
+  });
+  function fitPv(){const pv=$('#pv'),f=pv.querySelector('iframe');if(f)f.style.transform=`scale(${pv.clientWidth/1920})`}
+  addEventListener('resize',fitPv);
+
+  const setVal=(el,v)=>{if(document.activeElement!==el&&el.value!==String(v))el.value=v};
+  const paintMini=(el,p)=>{if(el._p===p)return;el._p=p;el.style.backgroundImage=p?`url("${p}")`:'none';el.innerHTML=p?'':SIL};
+  let rosterSig='';
+  renderFn=function(){
+    const sorted=[...S.roster].sort((a,b)=>a.nick.localeCompare(b.nick,'ru'));
+    const opts='<option value="">— свободно —</option>'+sorted.map(r=>`<option value="${r.id}">${esc(r.nick)}</option>`).join('');
+    S.seats.forEach((s,i)=>{
+      const tr=tb.children[i],st=statusOf(i);
+      tr.className=st!=='alive'?'out':'';
+      paintMini(tr.querySelector('.mini'),seatPhoto(i));
+      const who=tr.querySelector('[data-f=pid]');
+      if(document.activeElement!==who){if(who._o!==opts){who.innerHTML=opts;who._o=opts}who.value=s.pid}
+      setVal(tr.querySelector('[data-f=role]'),s.role);
+      tr.querySelector('.rc').className='rc rc-'+(s.role==='sheriff'?'gold':s.role==='don'?'don':ROLES[s.role].team);
+      const sel=tr.querySelector('[data-f=status]'),kl=tr.querySelector('.killed');
+      if(st==='killed'){sel.style.display='none';kl.textContent=`Убит (ночь ${shotNight(i)+1})`}
+      else{sel.style.display='';kl.textContent='';setVal(sel,s.status==='voted'?'voted':'alive')}
+    });
+    setVal($('#fTitle'),S.title);setVal($('#fGame'),S.game);setVal($('#fAccent'),okColor(S.accent)?S.accent.toLowerCase():ACCENT_DEF);
+    UI_FIELDS.forEach(([k,,,,,un])=>{setVal($('#u_'+k),S.ui[k]);$('#o_'+k).textContent=(un==='×'?(+S.ui[k]).toFixed(2):S.ui[k])+(un==='×'?'×':' px')});
+
+    const sig=S.roster.map(r=>r.id).join(',');
+    const rl=$('#roster');
+    if(sig!==rosterSig){
+      rosterSig=sig;
+      rl.innerHTML=S.roster.length?S.roster.map(r=>`<div class="rr" data-id="${r.id}">
+        <label class="thumb" title="Загрузить фото"><input type="file" accept="image/*" data-id="${r.id}" aria-label="Фото игрока"><span>+</span></label>
+        <button data-a="delPhoto" data-id="${r.id}" title="Удалить фото" aria-label="Удалить фото" style="padding:1px 6px">×</button>
+        <input class="rn" data-id="${r.id}" aria-label="Ник">
+        <span class="seat"></span>
+        <button data-a="delPerson" data-id="${r.id}" class="warn" aria-label="Удалить игрока">Удалить</button></div>`).join('')
+        :'<div class="muted">Список пуст. Добавьте игроков кнопкой ниже.</div>';
+    }
+    rl.querySelectorAll('.rr').forEach(el=>{
+      const id=el.dataset.id,p=person(id);if(!p)return;
+      setVal(el.querySelector('.rn'),p.nick);
+      const th=el.querySelector('label.thumb'),ph=photos[id]||null;
+      if(th._p!==ph){th._p=ph;th.style.backgroundImage=ph?`url("${ph}")`:'none';th.classList.toggle('has',!!ph)}
+      el.querySelector('[data-a=delPhoto]').style.visibility=ph?'visible':'hidden';
+      const si=seatOf(id);el.querySelector('.seat').textContent=si>=0?'место '+(si+1):'';
+    });
+    if(pendingFocus){const inp=rl.querySelector(`.rn[data-id="${pendingFocus}"]`);pendingFocus=null;if(inp){inp.focus();inp.select();inp.scrollIntoView({block:'nearest'})}}
+
+    const po=S.seats.map((s,i)=>`<option value="${i}">№${i+1} ${esc(seatNick(i))}</option>`).join('');
+    $('#nights').innerHTML=S.nights.map((n,k)=>{
+      let rs='',rd='';
+      if((n.check||'')!==''){const tm=team(+n.check);rs=`<span class="rs ${tm}">${tm==='black'?'чёрный':'красный'}</span>`}
+      if((n.don||'')!==''){const sh=S.seats[+n.don].role==='sheriff';rd=`<span class="rs ${sh?'gold':''}">${sh?'шериф':'не шериф'}</span>`}
+      return `<tr><td>Ночь ${k+1}</td>
+        <td><select data-k="${k}" data-f="shot" aria-label="Отстрел, ночь ${k+1}"><option value="">—</option>${po}</select></td>
+        <td><div class="bar" style="flex-wrap:nowrap"><select data-k="${k}" data-f="check" aria-label="Проверка шерифа, ночь ${k+1}"><option value="">—</option>${po}</select>${rs}</div></td>
+        <td><div class="bar" style="flex-wrap:nowrap"><select data-k="${k}" data-f="don" aria-label="Проверка дона, ночь ${k+1}"><option value="">—</option>${po}</select>${rd}</div></td>
+        <td><button data-a="delNight" data-k="${k}" aria-label="Удалить ночь">×</button></td></tr>`;
+    }).join('');
+    document.querySelectorAll('#nights select').forEach(s=>{s.value=S.nights[+s.dataset.k][s.dataset.f]??''});
+  };
+
+  /* ---- отправка данных на экраны ---- */
+  let sent={};
+  function buildView(){
+    return {t:Date.now(),title:S.title,game:+S.game||0,
+      seats:S.seats.map((s,i)=>({pid:s.pid||'',nick:seatNick(i),role:s.role,status:statusOf(i)})),
+      nights:S.nights.map(n=>({shot:n.shot||'',check:n.check||'',don:n.don||''})),
+      ui:Object.assign({},UI_DEF,S.ui),accent:okColor(S.accent)?S.accent:ACCENT_DEF,
+      wait:{show:!!S.wait.show,running:!!S.wait.running,remain:waitLeft(),sentAt:Date.now()}};
+  }
+  function sendPhotos(all){
+    const seated=new Set(S.seats.map(s=>s.pid).filter(Boolean));
+    seated.forEach(pid=>{
+      const ph=photos[pid]||null,sig=ph?ph.length+':'+ph.slice(-24):'none';
+      if(all||sent[pid]!==sig){sent[pid]=sig;Net.send({kind:'photo',pid,data:ph})}
+    });
+  }
+  publish=function(full){
+    const v=buildView();lsSet(VKEY,JSON.stringify(v));
+    Net.send({kind:'view',view:v});sendPhotos(!!full);
+  };
+  const seen={};
+  const NAMES={overlay:'HUD',red:'Победа мирных',black:'Победа мафии'};
+  function drawDisp(){
+    const now=Date.now();
+    $('#cDisp').innerHTML='Экраны: '+Object.keys(NAMES).map(k=>{
+      const on=seen[k]&&now-seen[k]<40000;
+      return `<span class="${on?'on':'off'}">${on?'●':'○'} ${NAMES[k]}</span>`;
+    }).join('');
+  }
+  Net.on(m=>{
+    if(m.kind==='hello'||m.kind==='pong'){seen[m.mode]=Date.now();drawDisp()}
+    if(m.kind==='hello'){sent={};publish(true)}
+  });
+  Net.onOpen(()=>{sent={};publish(true);Net.send({kind:'ping'})});
+  setInterval(()=>{Net.send({kind:'ping'});drawDisp()},15000);
+  const ST={
+    ok:['ok','Подключено к OBS',''],
+    connecting:['wait','Подключение…',''],
+    off:['bad','Нет связи с OBS','Включите в OBS: «Инструменты» → «Настройки сервера WebSocket» → «Включить сервер WebSocket». Порт по умолчанию 4455.'],
+    needpw:['bad','OBS просит пароль','Введите пароль сервера WebSocket ниже или отключите в OBS аутентификацию.'],
+    badpw:['bad','Неверный пароль','Проверьте пароль в «Инструменты» → «Настройки сервера WebSocket» → «Показать сведения о подключении».'],
+    nocrypto:['bad','Пароль не поддерживается','Отключите аутентификацию в настройках сервера WebSocket OBS.']
+  };
+  Net.onStatus(s=>{const x=ST[s]||ST.off;$('#cDot').className='dot '+x[0];$('#cSt').textContent=x[1];$('#cHint').textContent=x[2]});
+  $('#cHost').value=Net.cfg.host;$('#cPort').value=Net.cfg.port;$('#cPw').value=Net.cfg.pw;
+  A.reconnect=()=>{Net.setCfg({host:$('#cHost').value.trim()||'localhost',port:+$('#cPort').value||4455,pw:$('#cPw').value})};
+  drawDisp();
+  Net.connect();
+  renderFn();
+  publish(true);
+  Net.send({kind:'ping'});
+}
+</script>
+</body>
+</html>
+
+</body>
+</html>
