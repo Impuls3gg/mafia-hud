@@ -43,7 +43,8 @@ body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;f
 .nights .chip.sher{background:var(--brass);color:var(--brass-ink)}
 .nights .chip.don{background:var(--don);color:#fff}
 .nights .chip.nosher{background:#4a4a52;color:#fff}
-.ic-crown{fill:var(--don)}
+.ic-hat{fill:var(--don)}
+.ic-hat .hb{fill:#16161b}
 .nights .res{font-size:19px;color:var(--muted)}
 .nights .miss{width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08)}
 .nights .miss svg{width:26px;height:26px;fill:none;stroke:var(--paper);stroke-width:2.6;stroke-linecap:round}
@@ -69,7 +70,7 @@ body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;f
 .tile.r-mafia .badge{display:flex;background:#000;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45)}
 .tile .badge svg,.card .bd svg{width:64%;height:64%}
 .tile .badge .rb-hat,.card .bd .rb-hat{width:70%;height:70%}
-.tile .badge .rb-guns,.card .bd .rb-guns{width:88%}
+.tile .badge .rb-rev,.card .bd .rb-rev{width:88%}
 .rb-star{fill:var(--brass-ink)}
 .rb-hat .hb{fill:var(--don)}
 .tile .bot{position:absolute;left:0;right:0;bottom:0;height:calc(42px*var(--ts));display:flex;background:var(--plate)}
@@ -138,7 +139,7 @@ label.thumb input{position:absolute;opacity:0;width:1px;height:1px}
 .nt td:first-child{font-family:var(--f-display);font-size:16px;white-space:nowrap}
 .nt select{width:100%}
 .nt .rs{font-size:12px;white-space:nowrap}
-.nt .rs.red{color:#ff7a8a} .nt .rs.black{color:#fff} .nt .rs.gold{color:var(--brass)}
+.nt .rs.red{color:#ff7a8a} .nt .rs.black{color:#fff} .nt .rs.gold{color:var(--brass)} .nt .rs.don{color:var(--don)}
 .pv{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;background:repeating-conic-gradient(#2a2a30 0 25%,#222228 0 50%) 0 0/24px 24px;border-radius:4px}
 .pv iframe{position:absolute;left:0;top:0;width:1920px;height:1080px;border:0;transform-origin:0 0}
 .rl{max-height:460px;overflow:auto}
@@ -231,19 +232,19 @@ const MODE=FORCE_MODE||((/panel/i.test(location.hash)||qs.has('panel'))?'panel':
 const ROLES={civ:{t:'Мирный',team:'red'},sheriff:{t:'Шериф',team:'red'},mafia:{t:'Мафия',team:'black'},don:{t:'Дон',team:'black'}};
 const IC={
   shot:'<svg viewBox="0 0 24 24" class="ic-shot"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>',
-  crown:'<svg viewBox="0 0 24 24" class="ic-crown"><path d="M3 7l4.5 4.5L12 4l4.5 7.5L21 7l-2 12H5z"/></svg>',
+  hat:'<svg viewBox="0 0 24 24" class="ic-hat"><path d="M6 16c0-3.6.7-7.3 2.3-9.1.8-.9 2-.7 2.7 0 .5.5 1.5.5 2 0 .7-.7 1.9-.9 2.7 0C17.3 8.7 18 12.4 18 16c-1.8.6-3.8.9-6 .9s-4.2-.3-6-.9z"/><path d="M2 16.2c2.6 1.5 6 2.3 10 2.3s7.4-.8 10-2.3c-.4 2.1-4.6 3.8-10 3.8S2.4 18.3 2 16.2z"/><path class="hb" d="M6.2 13.6c1.8.6 3.7.9 5.8.9s4-.3 5.8-.9v1.6c-1.8.6-3.7.9-5.8.9s-4-.3-5.8-.9z"/></svg>',
   star:'<svg viewBox="0 0 24 24" class="ic-star"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17l-6.1 3.4 1.5-6.8L2.2 9l6.9-.7z"/></svg>',
   hand:'<svg viewBox="0 0 24 24"><path d="M8 12V5.5a1.5 1.5 0 013 0V11m0-6.5V3.5a1.5 1.5 0 013 0V11m0-6a1.5 1.5 0 013 0v6.5m0-3a1.5 1.5 0 013 0V15a7 7 0 01-7 7h-1.5a7 7 0 01-5.3-2.4l-2.7-3.1a1.6 1.6 0 012.3-2.2L8 15.5"/></svg>',
   cross:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>',
   card:'<svg viewBox="0 0 24 24"><rect x="7.5" y="4" width="9" height="14" rx="1.6" fill="#c8102e" transform="rotate(10 12 11)"/></svg>'
 };
-/* значки ролей: шериф — звезда, дон — шляпа, мафия — два скрещённых револьвера */
-const GUN_BODY='<path d="M30 12L16 14L14 22L15 38L30 40Z"/><path d="M22 15L18 7C16.5 4.5 14.5 3 12 2.6C11.6 4 12.4 5.6 13.6 6.8L16.5 15Z"/><path d="M30 39C24 50 10 62-4 70C-9 73.5-16 71-18.5 66C-20 62-19 58-16.5 55.5C-6 49 4 42 14 36Z"/><rect x="24" y="12" width="30" height="4"/><rect x="52" y="15" width="52" height="8" rx="1.5"/><rect x="28" y="13" width="26" height="24" rx="5"/>';
-const GUN=`<g fill="#fff">${GUN_BODY}<path d="M98.5 15L100 10.5H102.5L103 15Z"/><path d="M36.5 37C37 40.5 36 43.5 33.5 46L32 45C34 42.7 34.8 40 34.5 37Z"/></g><circle cx="38" cy="43" r="7" fill="none" stroke="#fff" stroke-width="4.2"/><rect x="28" y="13" width="26" height="24" rx="5" fill="none" stroke="#000" stroke-width="1.6"/><g fill="#000"><rect x="31.5" y="18" width="19" height="3.6" rx="1.8"/><rect x="31.5" y="28.4" width="19" height="3.6" rx="1.8"/><circle cx="21" cy="27" r="1.6"/></g>`;
+/* значки ролей: шериф — звезда, дон — шляпа, мафия — револьвер */
+// белый силуэт револьвера по референсу: контур тот же, внутри только выемки барабана и спусковая скоба
+const REVOLVER_IMG='data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPAAAACACAYAAAA1d+RTAAAJsUlEQVR42u2diXfUNhCH12tnkwBpKOEIgRDCHUrC0QKPK+UKBUooUB7Q//8PUbVdiwpnfcvekf3Ne78X+pp4vdZ8HmkkjQZKqUEFDbWiKRpWvB5CqIKqgBvm/E5Q4HcQQi0DHMZwjv99VuuLOmi3LHiHRGSEZg+wHVF3VDH7J/67AIgRmi3ABt4qdtyKxjxwhFoGeFgDXmOnrEjOQ3ejICWJWFZhhoZTFGSIdhEGcOgAXmM8bHcaCgbGHjaFGS+NIeA3C7CJvOeVOxuQna4dYc3zO1GzLT5rfdTa13qjtaf1TOuJ1kOtu1o3ta5rXYr9YJy4XI2HRUe1jmgtas3VBDG0vlvQwMsu2avoBcCRw+hrbN6aPw5RpoIUqM0MgK82fnHsam1pHUsBygVoWdfo1OxI1hccOm68XaJwocg7iJ37q+qXvY2/96DG7EWY8K81rcda77Rea13p2rjdxZRRGXsQP8g9lKqXCtuJfXAukVALU4YVyVWAuznX3+zK7Mi0t/8y/oMJsaKQGd+907fEavIBHMVnMM/sdcW/u9iFKNzElBGG+WCrXVifYL+BztKmGN1z/wA20fcNbYp12MZTWN+0fo+TY50ZA5s538+0MdZB254SbQMAxjD5tmxNRyVXswEwJt55x0sg1xvQGTV9P7gkW+jDwiEA7naSJmrIcQwUb4V+95W+rPoD4G4DPJeyLdCFxuPIwwK/94OGX14AjLUG8IKjfcNJjeLrr/as5yF6GukFPk8XWhXfpidx4c9634pHJHfAYJjvL62wjxv6WUqJ0evowHbCIT6AeWp3+xyBk/WMMMw3e5Io0RP0MQLblRDCuKLBpnCNt4WdVP2rYIFNt8VEXbFhH4va+fYGCxjDYykgD3JqjXW+LrQvMsmLD/huowkdA8GmJ88hWZe8U13srnUpRkTiAwAHDcgkim4pv4rmLSZgDjKK3Q99gLyrVR0X4LdRgE2u5JCnz+ajVZGj6FG6IQC3o4go/B3gUcPDlasdfG7jIdg9rQ01qWUu+lSMLtdWPgzAjY6B+1a99L7E0zb7UCS9qbXAZlH/eFy1pCYVPY/HSZPxftlzWhe0LqvJSQTbcdnTsSM80nqqJnWgx1UV36vJZpJ3dBzE2yFJ6605wS/9qJdpJ/I1eb9mjPUJRlhzDcDNn8CXl+BJU9p5SKbQ2hZ8eNGdFlHVEiBliU0l5BgAWHXjDGCMutIA3ONpsHPxIWG/ONSNWHTzARjlVLu47EFRu78BGIDR9OmvQPBCjlBwUTsARp1IZrVR1O54zwEOABg1NQ7uY1G7tgFmHhixnttTOywhCgOL7C70WzgRaxckjIOBRTbAD+BErL2SsKQSWGRPJe3ACauxANhfgK/CCFNJAOwvwBdgRLStzjqRBSyyAd6EEbYWArC/AJ+HDxZ0ADAAY83Z01lGYWABYMzjZBawyAZ4AzaUL2VqZxKFgQWAMTe2NIvxMLAAMObxwg5gAWDMnb1vuysNLACMubW1NpNawCK7Ksc8PJCVBmC/o/DrGTnhTfX/nlc28QsdDwOKH5F4Res3NSl0txr/90p8hMs1rWeOnO55yj2EHN1a2h62MR4GEj8icVAC9p8qOtwoce5T8nOpElLejjQ9tQQg/kTicMpZTXaVyMiqFjmID10rO2aLChQZ2INLOV1p4OjuoW5BwYh5qWBXL+DUCHkQ4/DdL4z3yKFzGcg/1nTo89Y1+2APmhoP4+j9SIK53M9aNRu9nXhRmNMY13oC8XIT42GcvN/laX+vAHDZOepR4ljWyHoJ9C0x5jwK4+T9qG75LiMqVll0EJUoezstwZZ8GayXBOFJzv2N4peTNPvLNcQ4eb+L41WtbRyUOFolr9tY9hiZIJGsSyosMXzwviuNk/djDPyzSj+CtO6yv7rLCssAXGS6y552M793p6tdaZy8HwCHOVNIw4YSZEWy3Oaz884c3qro+CZZdk8QwDuu1kvj5P3ORN9zEA3qAmzu70iDc6lzArvTAIxqH1X6pSLARZdt/lrAUYuch7xf80VjPuOQIIBfuuhK4+BMJVWJbMbpnuQ46VzJhE2anXGQ+DH3/LxLJWlxcA5Kq+JEkaPus/3ZoxZqL0ubd35TNwrj4P0ZA0cqe5nfsOR48n6Oc14teF3z/8+1sJbYPIszXYnCODjd6DKR0sB70uFUifmd/SbHijXmnZu2vTrfD+emULyKV2rZ0TX5t/byxysFnHKlRGTJA8r1nlrzebtdyEjj3GSjk6uyokTUNY61pNxXojBQnmhx/XDe3Pgs7E5ViHHs/o2Fj6r8bX72ksQyu4VelwQur2v/uKFteBI3UVT6njh2P6PwywxHemH9/mKFKBKW7NavzeDkP3OPL5S8crQBACMX0Wc5YxOESjlWJCwBUN7qqK8NFoXLWyPuTeUOHJrxcB3btpxuZNXoStbtCq3dQsMShQbaSOxJsrBsFMaZgbiKrdfs3m7nXP9ZCyVZJY6DX5X93jgy3emBg7rS39RkA/14l82m1ul4rnj886LWXa3Ps6xcUaHYgRfJLJwYGYiXBXUjgxaO6TRd6EvCAD5VpneDA6OBVXN6EJ/+oHpwxq75jAUlzwons3BelKxiUWRxRRM2avNQMOHnPRV+DjgumubUyTHYuPbVHw0564bVCwiUzCm1tu1yUYhxWJR3wsM0J5qPk1NVjlnZj6ENEl34QMmdExfbjcZRUZnudeSwixs4vl4XAQ4AGDUFdHKBRjQlgxwk4I8SCTMpc+GvBAK8VaQbjTMitllOand52Y2mEREAy5sLLtyNphERWyyVWhUKcO7JGTQiAuD88rhiu9E0IgLgcvueRa2NphERAGeXtJ21HcsaC9OICIAnY0yp9jYrCtOICICzj3URPQ6mEREA+wEwY2CEPAX4Wtp0Eo2IAFj2GDizG00jIgCWnYXOnE6iEREAy54HVomCBwEAI/QjDEseAHx72jiYRkQALHctdO44mEZE7EaabSG/WuNgGhEBsFK3PAE4So6DaUQ04HSK/4rS+2AH5oNpRATASn1Q/tgP42AaEQ04lcIrA2CEPAeYMTBCngJ8woaYRkQA7Jft2uN3GhEBsH/2/d5pREQWehLVfAOYCIxYShn/POkhwCSxELKisE922ryAaEDEcsrJz9seAfzUvHxoQIT8i8KfTCKLxkPoR4j3PQB4w/QeaDiEDkK8LBjer3bXn0ZD6CDEdrG764LgPcNuJISKTS9FKceZzMdZ4G012YbocifTF60/tR5r3VCTSiFzKUk3AEaoYJY6ygC6zXugLjRCDqJzEMMUxoocylxzaH1W6v38C+RASfGWiasyAAAAAElFTkSuQmCC';
 const BADGE={
   sheriff:'<svg viewBox="0 0 24 24" class="rb-star"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17l-6.1 3.4 1.5-6.8L2.2 9l6.9-.7z"/></svg>',
   don:'<svg viewBox="0 0 24 24" class="rb-hat"><path fill="#fff" d="M6 16c0-3.6.7-7.3 2.3-9.1.8-.9 2-.7 2.7 0 .5.5 1.5.5 2 0 .7-.7 1.9-.9 2.7 0C17.3 8.7 18 12.4 18 16c-1.8.6-3.8.9-6 .9s-4.2-.3-6-.9z"/><path fill="#fff" d="M2 16.2c2.6 1.5 6 2.3 10 2.3s7.4-.8 10-2.3c-.4 2.1-4.6 3.8-10 3.8S2.4 18.3 2 16.2z"/><path class="hb" d="M6.2 13.6c1.8.6 3.7.9 5.8.9s4-.3 5.8-.9v1.6c-1.8.6-3.7.9-5.8.9s-4-.3-5.8-.9z"/></svg>',
-  mafia:`<svg viewBox="0 0 160 118" class="rb-guns"><g transform="translate(38.5 47) rotate(-34) translate(-41 -25)">${GUN}</g><g transform="translate(121.5 47) scale(-1 1) rotate(-34) translate(-41 -25)"><g fill="#000" stroke="#000" stroke-width="4" stroke-linejoin="round">${GUN_BODY}</g><circle cx="38" cy="43" r="7" fill="none" stroke="#000" stroke-width="8.2"/>${GUN}</g></svg>`
+  mafia:`<img class="rb-rev" src="${REVOLVER_IMG}" alt="">`
 };
 const UI_DEF={th:236,ts:1,gap:12,mb:30,side:40,ns:1,is:1};
 const UI_FIELDS=[
@@ -437,12 +438,12 @@ if(MODE!=='panel'){
       const used=ns.filter(has);
       nb.classList.toggle('on',used.length>0);
       if(!used.length){nb.innerHTML='';return}
-      nb.innerHTML=`<div class="hd"><span></span><span>${IC.shot}Отстрел</span><span>${IC.star}Шериф</span><span>${IC.crown}Дон</span></div>`+
+      nb.innerHTML=`<div class="hd"><span></span><span>${IC.shot}Отстрел</span><span>${IC.star}Шериф</span><span>${IC.hat}Дон</span></div>`+
         ns.map((n,k)=>{
           if(!has(n))return '';
           const dash='<span class="none">—</span>',sh=n.shot||'',c=n.check||'',d=n.don||'';
           const shot=sh===''||sh==='miss'?dash:`<span class="chip ${vColor(+sh)}">${+sh+1}</span>`;
-          const chk=c===''?dash:`<span class="chip ${vTeam(+c)}">${+c+1}</span>`;
+          const chk=c===''?dash:`<span class="chip ${(V.seats[+c]||{}).role==='don'?'don':vTeam(+c)}">${+c+1}</span>`;
           const don=d===''?dash:`<span class="chip ${(V.seats[+d]||{}).role==='sheriff'?'sher':'nosher'}">${+d+1}</span>`;
           return `<div class="nr"><span class="nn">Ночь ${k+1}</span><span class="cell">${shot}</span><span class="cell">${chk}</span><span class="cell">${don}</span></div>`;
         }).join('');
@@ -521,7 +522,7 @@ if(MODE==='panel'){
       </div>
       <div class="box"><h2>Ночи: отстрел и проверки</h2>
         <table class="nt"><thead><tr><th></th><th>Отстрел мафии</th><th>Проверка шерифа</th><th>Проверка дона</th><th></th></tr></thead><tbody id="nights"></tbody></table>
-        <div class="bar" style="margin-top:8px"><button data-a="addNight">Добавить ночь</button><span class="muted">Результаты проверок определяются по ролям. На экране красный и чёрный показываются цветом номера, у дона жёлтый номер означает, что он нашёл шерифа.</span></div>
+        <div class="bar" style="margin-top:8px"><button data-a="addNight">Добавить ночь</button><span class="muted">Результаты проверок определяются по ролям. На экране красный и чёрный показываются цветом номера, найденный шерифом дон — фиолетовым, у дона жёлтый номер означает, что он нашёл шерифа.</span></div>
       </div>
       <div class="box"><h2>Игра</h2>
         <div class="bar"><button data-a="newGame" class="warn">Новая игра</button><span class="muted">Сбрасывает роли, статусы, фолы и ночи и увеличивает номер игры. Рассадка остаётся.</span></div>
@@ -717,7 +718,7 @@ if(MODE==='panel'){
     const po=S.seats.map((s,i)=>`<option value="${i}">№${i+1} ${esc(seatNick(i))}</option>`).join('');
     $('#nights').innerHTML=S.nights.map((n,k)=>{
       let rs='',rd='';
-      if((n.check||'')!==''){const tm=team(+n.check);rs=`<span class="rs ${tm}">${tm==='black'?'чёрный':'красный'}</span>`}
+      if((n.check||'')!==''){const tm=team(+n.check),dn=S.seats[+n.check].role==='don';rs=dn?'<span class="rs don">дон</span>':`<span class="rs ${tm}">${tm==='black'?'чёрный':'красный'}</span>`}
       if((n.don||'')!==''){const sh=S.seats[+n.don].role==='sheriff';rd=`<span class="rs ${sh?'gold':''}">${sh?'шериф':'не шериф'}</span>`}
       return `<tr><td>Ночь ${k+1}</td>
         <td><select data-k="${k}" data-f="shot" aria-label="Отстрел, ночь ${k+1}"><option value="">—</option>${po}</select></td>
