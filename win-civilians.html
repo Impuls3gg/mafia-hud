@@ -9,7 +9,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root{
-  --red:#c41e3a; --accent:#c41e3a; --accent-glow:rgba(196,30,58,.22); --don:#8977fe; --brass:#c9a44c; --foul:#f2c230; --hot:#ff5a6e;
+  --red:#c41e3a; --accent:#c41e3a; --accent-glow:rgba(196,30,58,.22); --don:#8977fe; --brass:#c9a44c; --brass-ink:#1d1607; --foul:#f2c230; --hot:#ff5a6e;
   --plate:rgba(22,22,27,.92); --paper:#f5f5f0; --muted:#a09d95;
   --f-display:'Oswald','Arial Narrow','Roboto Condensed',Arial,sans-serif;
   --f-ui:'Inter','Segoe UI',Roboto,Arial,sans-serif;
@@ -30,7 +30,7 @@ body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;f
 .nights{position:absolute;right:40px;top:36px;background:var(--plate);display:none;transform-origin:100% 0}
 .nights.on{display:block}
 .nights .hd,.nights .nr{display:grid;grid-template-columns:62px repeat(3,64px);column-gap:4px;align-items:center}
-.nights .hd{padding:8px 12px;font-size:13px;color:var(--muted);letter-spacing:.03em;border-bottom:3px solid var(--accent)}
+.nights .hd{padding:8px 12px;font-size:15px;color:var(--muted);letter-spacing:.03em;border-bottom:3px solid var(--accent)}
 .nights .hd span{display:flex;flex-direction:column;align-items:center;gap:2px}
 .nights .hd svg{width:22px;height:22px}
 .nights .nr{padding:6px 12px;border-bottom:1px solid rgba(255,255,255,.06);min-height:48px}
@@ -40,7 +40,8 @@ body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;f
 .nights .chip{width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;background:var(--paper);color:#111}
 .nights .chip.red{background:var(--red);color:#fff}
 .nights .chip.black{background:#000;color:#fff;box-shadow:inset 0 0 0 2px rgba(255,255,255,.4)}
-.nights .chip.sher{background:var(--brass);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45)}
+.nights .chip.sher{background:var(--brass);color:var(--brass-ink)}
+.nights .chip.don{background:var(--don);color:#fff}
 .nights .chip.nosher{background:#4a4a52;color:#fff}
 .ic-crown{fill:var(--don)}
 .nights .res{font-size:19px;color:var(--muted)}
@@ -62,13 +63,20 @@ body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;f
 .tile.team-black .accent{background:#000}
 .tile.r-sheriff .accent{background:var(--brass)}
 .tile.r-don .accent{background:var(--don)}
-.tile .badge{position:absolute;left:calc(8px*var(--ts));top:calc(12px*var(--ts));width:calc(38px*var(--ts));height:calc(38px*var(--ts));display:none;align-items:center;justify-content:center;font-size:calc(25px*var(--ts));font-weight:700}
-.tile.r-sheriff .badge{display:flex;background:var(--brass);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45)}
-.tile.r-don .badge{display:flex;background:var(--don);color:#fff}
-.tile.r-mafia .badge{display:flex;background:#000;color:#fff;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45)}
+.tile .badge{position:absolute;left:calc(8px*var(--ts));top:calc(12px*var(--ts));width:calc(38px*var(--ts));height:calc(38px*var(--ts));display:none;align-items:center;justify-content:center}
+.tile.r-sheriff .badge{display:flex;background:var(--brass)}
+.tile.r-don .badge{display:flex;background:var(--don)}
+.tile.r-mafia .badge{display:flex;background:#000;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45)}
+.tile .badge svg,.card .bd svg{width:64%;height:64%}
+.tile .badge .rb-hat,.card .bd .rb-hat{width:70%;height:70%}
+.tile .badge .rb-guns,.card .bd .rb-guns{width:88%}
+.rb-star{fill:var(--brass-ink)}
+.rb-hat .hb{fill:var(--don)}
 .tile .bot{position:absolute;left:0;right:0;bottom:0;height:calc(42px*var(--ts));display:flex;background:var(--plate)}
 .tile .num{width:calc(42px*var(--ts));flex:none;display:flex;align-items:center;justify-content:center;font-size:calc(26px*var(--ts));font-weight:700;background:var(--red)}
 .tile.team-black .num{background:#000;box-shadow:inset 0 0 0 2px rgba(255,255,255,.35)}
+.tile.r-sheriff .num{background:var(--brass);color:var(--brass-ink)}
+.tile.r-don .num{background:var(--don);box-shadow:none}
 .tile .nick{flex:1;min-width:0;display:flex;align-items:center;padding:0 calc(10px*var(--ts));font-size:calc(21px*var(--ts));font-weight:500}
 .tile .nick span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tile .st{position:absolute;left:calc(8px*var(--ts));right:calc(8px*var(--ts));top:calc(62px*var(--ts));height:calc(36px*var(--ts));display:none;align-items:center;justify-content:center;gap:5px;background:rgba(0,0,0,.9);font-size:calc(14px*var(--ts));letter-spacing:.02em;white-space:nowrap;overflow:hidden}
@@ -77,6 +85,11 @@ body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;f
 .tile.s-voted .st svg{stroke:var(--foul)}
 .tile.out .body{filter:grayscale(1);opacity:.45}
 .tile.out .st{display:flex}
+/* фолы: карточка в правом верхнем углу */
+.tile .fc{position:absolute;right:calc(9px*var(--ts));top:calc(10px*var(--ts));width:calc(19px*var(--ts));height:calc(25px*var(--ts));border-radius:calc(3px*var(--ts));display:none;align-items:center;justify-content:center;font-size:calc(16px*var(--ts));font-weight:700;line-height:1;background:var(--foul);color:#15151a;transform:rotate(8deg);box-shadow:0 2px 6px rgba(0,0,0,.55),inset 0 0 0 1px rgba(0,0,0,.18)}
+.tile .fc.on{display:flex}
+.tile .fc.f3{background:#ff8c1a}
+.tile .fc.f4{background:#c8102e;color:#fff}
 
 /* ================= PANEL ================= */
 body.panel{background:#121216;color:#e9e7e2;font-family:var(--f-ui);font-size:13px;color-scheme:dark;min-height:100%}
@@ -107,6 +120,11 @@ table.pt{width:100%;border-collapse:collapse;min-width:520px}
 .pt td.rc-gold select{border-left:3px solid var(--brass)}
 .pt td.rc-don select{border-left:3px solid var(--don)}
 .pt .killed{color:var(--hot);font-weight:500}
+.pt td.fo{white-space:nowrap}
+.pt td.fo button{padding:1px 7px}
+.pt .fn{display:inline-block;min-width:20px;text-align:center;font-variant-numeric:tabular-nums}
+.pt .fn.f3{color:#ff8c1a} .pt .fn.f4{color:var(--hot);font-weight:600}
+.panel input[type=checkbox]{padding:0;margin-right:4px;vertical-align:-2px}
 .pc{display:flex;align-items:center;gap:3px}
 label.thumb{display:block;width:36px;height:46px;border-radius:3px;background:#26262c center top/cover no-repeat;cursor:pointer;position:relative;overflow:hidden;border:1px dashed #4a4a52}
 label.thumb.has{border-style:solid;border-color:#34343c}
@@ -170,14 +188,16 @@ body.scene #stage{display:flex;flex-direction:column;align-items:center;justify-
 .card.team-black .ac{background:#000}
 .card.r-sheriff .ac{background:var(--brass)}
 .card.r-don .ac{background:var(--don)}
-.card .bd{position:absolute;left:8px;top:12px;width:36px;height:36px;display:none;align-items:center;justify-content:center;font-size:24px;font-weight:700}
-.card.r-sheriff .bd{display:flex;background:var(--brass);color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.45)}
-.card.r-don .bd{display:flex;background:var(--don);color:#fff}
-.card.r-mafia .bd{display:flex;background:#000;color:#fff;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45)}
+.card .bd{position:absolute;left:8px;top:12px;width:36px;height:36px;display:none;align-items:center;justify-content:center}
+.card.r-sheriff .bd{display:flex;background:var(--brass)}
+.card.r-don .bd{display:flex;background:var(--don)}
+.card.r-mafia .bd{display:flex;background:#000;box-shadow:inset 0 0 0 2px rgba(255,255,255,.45)}
 .card .bt{position:absolute;left:0;right:0;bottom:0;height:40px;display:flex;background:var(--plate)}
 .card .n{width:40px;flex:none;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;background:#34343c}
 .card.team-red .n{background:var(--red)}
 .card.team-black .n{background:#000;box-shadow:inset 0 0 0 2px rgba(255,255,255,.35)}
+.card.r-sheriff .n{background:var(--brass);color:var(--brass-ink)}
+.card.r-don .n{background:var(--don);box-shadow:none}
 .card .nk{flex:1;min-width:0;display:flex;align-items:center;padding:0 9px;font-size:20px;font-weight:500}
 .card .nk span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .hide{display:none!important}
@@ -208,13 +228,22 @@ const KEY='mafiaHudState.v4', PKEY='mafiaHudPhoto.v4.';
 const VKEY='mafiaHudView.v5', VPKEY='mafiaHudViewPhoto.v5.', WSKEY='mafiaHudWs.v5';
 const qs=new URLSearchParams(location.search);
 const MODE=FORCE_MODE||((/panel/i.test(location.hash)||qs.has('panel'))?'panel':((location.hash.match(/wait|red|black/)||[])[0]||'overlay'));
-const ROLES={civ:{t:'Мирный',team:'red',b:''},sheriff:{t:'Шериф',team:'red',b:'Ш'},mafia:{t:'Мафия',team:'black',b:'М'},don:{t:'Дон',team:'black',b:'Д'}};
+const ROLES={civ:{t:'Мирный',team:'red'},sheriff:{t:'Шериф',team:'red'},mafia:{t:'Мафия',team:'black'},don:{t:'Дон',team:'black'}};
 const IC={
   shot:'<svg viewBox="0 0 24 24" class="ic-shot"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>',
   crown:'<svg viewBox="0 0 24 24" class="ic-crown"><path d="M3 7l4.5 4.5L12 4l4.5 7.5L21 7l-2 12H5z"/></svg>',
   star:'<svg viewBox="0 0 24 24" class="ic-star"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17l-6.1 3.4 1.5-6.8L2.2 9l6.9-.7z"/></svg>',
   hand:'<svg viewBox="0 0 24 24"><path d="M8 12V5.5a1.5 1.5 0 013 0V11m0-6.5V3.5a1.5 1.5 0 013 0V11m0-6a1.5 1.5 0 013 0v6.5m0-3a1.5 1.5 0 013 0V15a7 7 0 01-7 7h-1.5a7 7 0 01-5.3-2.4l-2.7-3.1a1.6 1.6 0 012.3-2.2L8 15.5"/></svg>',
-  cross:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>'
+  cross:'<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>',
+  card:'<svg viewBox="0 0 24 24"><rect x="7.5" y="4" width="9" height="14" rx="1.6" fill="#c8102e" transform="rotate(10 12 11)"/></svg>'
+};
+/* значки ролей: шериф — звезда, дон — шляпа, мафия — два скрещённых револьвера */
+const GUN_BODY='<path d="M30 12L16 14L14 22L15 38L30 40Z"/><path d="M22 15L18 7C16.5 4.5 14.5 3 12 2.6C11.6 4 12.4 5.6 13.6 6.8L16.5 15Z"/><path d="M30 39C24 50 10 62-4 70C-9 73.5-16 71-18.5 66C-20 62-19 58-16.5 55.5C-6 49 4 42 14 36Z"/><rect x="24" y="12" width="30" height="4"/><rect x="52" y="15" width="52" height="8" rx="1.5"/><rect x="28" y="13" width="26" height="24" rx="5"/>';
+const GUN=`<g fill="#fff">${GUN_BODY}<path d="M98.5 15L100 10.5H102.5L103 15Z"/><path d="M36.5 37C37 40.5 36 43.5 33.5 46L32 45C34 42.7 34.8 40 34.5 37Z"/></g><circle cx="38" cy="43" r="7" fill="none" stroke="#fff" stroke-width="4.2"/><rect x="28" y="13" width="26" height="24" rx="5" fill="none" stroke="#000" stroke-width="1.6"/><g fill="#000"><rect x="31.5" y="18" width="19" height="3.6" rx="1.8"/><rect x="31.5" y="28.4" width="19" height="3.6" rx="1.8"/><circle cx="21" cy="27" r="1.6"/></g>`;
+const BADGE={
+  sheriff:'<svg viewBox="0 0 24 24" class="rb-star"><path d="M12 2l2.9 6.3 6.9.7-5.2 4.6 1.5 6.8L12 17l-6.1 3.4 1.5-6.8L2.2 9l6.9-.7z"/></svg>',
+  don:'<svg viewBox="0 0 24 24" class="rb-hat"><path fill="#fff" d="M6 16c0-3.6.7-7.3 2.3-9.1.8-.9 2-.7 2.7 0 .5.5 1.5.5 2 0 .7-.7 1.9-.9 2.7 0C17.3 8.7 18 12.4 18 16c-1.8.6-3.8.9-6 .9s-4.2-.3-6-.9z"/><path fill="#fff" d="M2 16.2c2.6 1.5 6 2.3 10 2.3s7.4-.8 10-2.3c-.4 2.1-4.6 3.8-10 3.8S2.4 18.3 2 16.2z"/><path class="hb" d="M6.2 13.6c1.8.6 3.7.9 5.8.9s4-.3 5.8-.9v1.6c-1.8.6-3.7.9-5.8.9s-4-.3-5.8-.9z"/></svg>',
+  mafia:`<svg viewBox="0 0 160 118" class="rb-guns"><g transform="translate(38.5 47) rotate(-34) translate(-41 -25)">${GUN}</g><g transform="translate(121.5 47) scale(-1 1) rotate(-34) translate(-41 -25)"><g fill="#000" stroke="#000" stroke-width="4" stroke-linejoin="round">${GUN_BODY}</g><circle cx="38" cy="43" r="7" fill="none" stroke="#000" stroke-width="8.2"/>${GUN}</g></svg>`
 };
 const UI_DEF={th:236,ts:1,gap:12,mb:30,side:40,ns:1,is:1};
 const UI_FIELDS=[
@@ -291,10 +320,10 @@ const Net=(()=>{
 <script>
 /* ================= СОСТОЯНИЕ ПУЛЬТА ================= */
 const newId=()=>'p'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-const emptySeat=pid=>({pid:pid||'',role:'civ',status:'alive'});
+const emptySeat=pid=>({pid:pid||'',role:'civ',status:'alive',fouls:0});
 function defaultState(){
   const roster=Array.from({length:10},(_,i)=>({id:newId()+i,nick:'Игрок '+(i+1)}));
-  return {v:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,photoVer:0,wait:{show:false,running:false,endAt:0,left:600000,total:600000}};
+  return {v:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,photoVer:0,showFouls:true,wait:{show:false,running:false,endAt:0,left:600000,total:600000}};
 }
 let S=null,photos={},renderFn=()=>{},publish=()=>{};
 if(MODE==='panel'){
@@ -321,7 +350,7 @@ const seatNick=i=>{const p=person(S.seats[i].pid);return p?p.nick:''};
 const seatPhoto=i=>photos[S.seats[i].pid]||null;
 const team=i=>ROLES[S.seats[i].role].team;
 function shotNight(i){return S.nights.findIndex(n=>n.shot===String(i))}
-function statusOf(i){return shotNight(i)>=0?'killed':(S.seats[i].status==='voted'?'voted':'alive')}
+function statusOf(i){const s=S.seats[i];return shotNight(i)>=0?'killed':(s.status==='removed'||(+s.fouls||0)>=4)?'removed':(s.status==='voted'?'voted':'alive')}
 </script>
 <!-- ================= ЭКРАНЫ: оверлей и сцены ================= -->
 <script>
@@ -330,6 +359,8 @@ if(MODE!=='panel'){
   const pc={};
   const photo=pid=>{if(!pid)return null;if(!(pid in pc))pc[pid]=lsGet(VPKEY+pid)||lsGet(PKEY+pid)||null;return pc[pid]};
   const vTeam=i=>ROLES[(V.seats[i]||{}).role||'civ'].team;
+  // цвет игрока как у номера на его плашке: шериф и дон — цвет роли, остальные — цвет команды
+  const vColor=i=>{const r=(V.seats[i]||{}).role;return r==='sheriff'?'sher':r==='don'?'don':vTeam(i)};
   let draw=()=>{};
 
   function prune(){
@@ -360,7 +391,7 @@ if(MODE!=='panel'){
     const tiles=Array.from({length:10},(_,i)=>{
       const t=document.createElement('div');
       t.innerHTML=`<div class="body"><div class="ph"></div><div class="accent"></div><div class="badge"></div>
-        <div class="bot"><div class="num">${i+1}</div><div class="nick"><span></span></div></div></div><div class="st"></div>`;
+        <div class="bot"><div class="num">${i+1}</div><div class="nick"><span></span></div></div></div><div class="st"></div><div class="fc"></div>`;
       row.appendChild(t);return t;
     });
     const paint=(el,p)=>{if(el._p===p)return;el._p=p;el.style.backgroundImage=p?`url("${p}")`:'none';el.innerHTML=p?'':SIL};
@@ -394,9 +425,12 @@ if(MODE!=='panel'){
         const s=V.seats[i]||{},role=ROLES[s.role]?s.role:'civ',st=s.status||'alive';
         t.className=`tile team-${ROLES[role].team} r-${role} s-${st}`+(st!=='alive'?' out':'');
         paint(t.querySelector('.ph'),photo(s.pid));
-        t.querySelector('.badge').textContent=ROLES[role].b;
+        const bd=t.querySelector('.badge');if(bd._r!==role){bd._r=role;bd.innerHTML=BADGE[role]||''}
         t.querySelector('.nick span').textContent=s.nick||'—';
-        t.querySelector('.st').innerHTML=st==='killed'?IC.cross+'<span>УБИТ</span>':st==='voted'?IC.hand+'<span>ЗАГОЛОСОВАН</span>':'';
+        t.querySelector('.st').innerHTML=st==='killed'?IC.cross+'<span>УБИТ</span>':st==='voted'?IC.hand+'<span>ЗАГОЛОСОВАН</span>':st==='removed'?IC.card+'<span>УДАЛЁН</span>':'';
+        // фолы видны у игроков в игре и у удалённых, если показ включён в пульте
+        const fo=+s.fouls||0,fc=t.querySelector('.fc'),fon=V.showFouls!==false&&fo>0&&(st==='alive'||st==='removed');
+        fc.className='fc'+(fon?' on':'')+(fo>=4?' f4':fo===3?' f3':'');fc.textContent=fon?fo:'';
       });
       const nb=q('.nights'),ns=V.nights||[];
       const has=n=>(n.shot||'')!==''||(n.check||'')!==''||(n.don||'')!=='';
@@ -407,7 +441,7 @@ if(MODE!=='panel'){
         ns.map((n,k)=>{
           if(!has(n))return '';
           const dash='<span class="none">—</span>',sh=n.shot||'',c=n.check||'',d=n.don||'';
-          const shot=sh===''||sh==='miss'?dash:`<span class="chip">${+sh+1}</span>`;
+          const shot=sh===''||sh==='miss'?dash:`<span class="chip ${vColor(+sh)}">${+sh+1}</span>`;
           const chk=c===''?dash:`<span class="chip ${vTeam(+c)}">${+c+1}</span>`;
           const don=d===''?dash:`<span class="chip ${(V.seats[+d]||{}).role==='sheriff'?'sher':'nosher'}">${+d+1}</span>`;
           return `<div class="nr"><span class="nn">Ночь ${k+1}</span><span class="cell">${shot}</span><span class="cell">${chk}</span><span class="cell">${don}</span></div>`;
@@ -460,7 +494,7 @@ if(MODE!=='panel'){
       const roles=MODE!=='wait';
       $('scCards').innerHTML=list.map(x=>`<div class="card ${roles?`team-${ROLES[x.role].team} r-${x.role}`:''}">
         <div class="ph"${x.ph?` style="background-image:url('${x.ph}')"`:''}>${x.ph?'':SIL}</div><div class="ac"></div>
-        <div class="bd">${roles?ROLES[x.role].b:''}</div>
+        <div class="bd">${roles?BADGE[x.role]||'':''}</div>
         <div class="bt"><div class="n">${x.i+1}</div><div class="nk"><span>${esc(x.nick)}</span></div></div></div>`).join('');
       $('scCards').classList.toggle('hide',!list.length);$('scSub').classList.toggle('hide',!list.length);
     };
@@ -480,16 +514,17 @@ if(MODE==='panel'){
   <div class="p-grid">
     <div>
       <div class="box"><h2>Рассадка на игру</h2>
-        <div class="scroll"><table class="pt"><thead><tr><th>№</th><th></th><th>Игрок</th><th>Роль</th><th>Статус</th></tr></thead><tbody id="rows"></tbody></table></div>
+        <div class="scroll"><table class="pt"><thead><tr><th>№</th><th></th><th>Игрок</th><th>Роль</th><th>Статус</th><th>Фолы</th></tr></thead><tbody id="rows"></tbody></table></div>
         <div class="bar muted" style="margin-top:8px">Выберите игрока на каждое место. Если он уже сидит на другом месте, игроки поменяются местами. Убитым игрок становится автоматически, когда вы указываете его в отстреле.</div>
         <div class="bar"><button data-a="clearSeats">Освободить все места</button></div>
+        <div class="bar"><label><input type="checkbox" id="fFouls">Показывать фолы на плашках</label><span class="muted">Фол ставится кнопкой «+» в колонке «Фолы». Четвёртый фол удаляет игрока.</span></div>
       </div>
       <div class="box"><h2>Ночи: отстрел и проверки</h2>
         <table class="nt"><thead><tr><th></th><th>Отстрел мафии</th><th>Проверка шерифа</th><th>Проверка дона</th><th></th></tr></thead><tbody id="nights"></tbody></table>
         <div class="bar" style="margin-top:8px"><button data-a="addNight">Добавить ночь</button><span class="muted">Результаты проверок определяются по ролям. На экране красный и чёрный показываются цветом номера, у дона жёлтый номер означает, что он нашёл шерифа.</span></div>
       </div>
       <div class="box"><h2>Игра</h2>
-        <div class="bar"><button data-a="newGame" class="warn">Новая игра</button><span class="muted">Сбрасывает роли, статусы и ночи и увеличивает номер игры. Рассадка остаётся.</span></div>
+        <div class="bar"><button data-a="newGame" class="warn">Новая игра</button><span class="muted">Сбрасывает роли, статусы, фолы и ночи и увеличивает номер игры. Рассадка остаётся.</span></div>
       </div>
       <div class="box"><h2>Размеры плашек</h2>
         <div class="sz" id="sizes"></div>
@@ -532,7 +567,8 @@ if(MODE==='panel'){
     tr.innerHTML=`<td class="n">${i+1}</td><td><div class="mini"></div></td>
       <td><select class="who" data-f="pid" aria-label="Игрок на месте ${i+1}"></select></td>
       <td class="rc"><select data-f="role" aria-label="Роль, место ${i+1}"><option value="civ">Мирный</option><option value="sheriff">Шериф</option><option value="mafia">Мафия</option><option value="don">Дон</option></select></td>
-      <td class="stc"><select data-f="status" aria-label="Статус, место ${i+1}"><option value="alive">В игре</option><option value="voted">Заголосован</option></select><span class="killed"></span></td>`;
+      <td class="stc"><select data-f="status" aria-label="Статус, место ${i+1}"><option value="alive">В игре</option><option value="voted">Заголосован</option><option value="removed">Удалён</option></select><span class="killed"></span></td>
+      <td class="fo"><button data-a="foulMinus" data-i="${i}" aria-label="Снять фол, место ${i+1}">−</button><span class="fn"></span><button data-a="foulPlus" data-i="${i}" aria-label="Фол, место ${i+1}">+</button></td>`;
     tb.appendChild(tr);
   });
 
@@ -561,10 +597,12 @@ if(MODE==='panel'){
     uiReset(){S.ui=Object.assign({},UI_DEF)},
     addNight(){S.nights.push({shot:'',check:'',don:''})},
     delNight(el){S.nights.splice(+el.dataset.k,1);if(!S.nights.length)S.nights.push({shot:'',check:'',don:''})},
-    newGame(){if(!confirm('Начать новую игру? Роли, статусы и ночи сбросятся, рассадка останется.'))return;
-      S.seats.forEach(s=>{s.role='civ';s.status='alive'});S.nights=[{shot:'',check:'',don:''}];S.game=(+S.game||0)+1},
+    newGame(){if(!confirm('Начать новую игру? Роли, статусы, фолы и ночи сбросятся, рассадка останется.'))return;
+      S.seats.forEach(s=>{s.role='civ';s.status='alive';s.fouls=0});S.nights=[{shot:'',check:'',don:''}];S.game=(+S.game||0)+1},
     gamePlus(){S.game=(+S.game||0)+1},
     gameMinus(){S.game=Math.max(0,(+S.game||0)-1)},
+    foulPlus(el){const s=S.seats[+el.dataset.i];s.fouls=Math.min(4,(+s.fouls||0)+1)},
+    foulMinus(el){const s=S.seats[+el.dataset.i];s.fouls=Math.max(0,(+s.fouls||0)-1)},
     wSet(el){const ms=(+el.dataset.m)*60000;Object.assign(S.wait,{running:false,left:ms,total:ms,show:true})},
     wSetCustom(){const m=parseFloat($('#wMin').value);if(!(m>0))return;const ms=Math.round(m*60)*1000;Object.assign(S.wait,{running:false,left:ms,total:ms,show:true})},
     wStart(){const w=S.wait;if(w.running){w.left=waitLeft();w.running=false}else if(waitLeft()>0){w.endAt=Date.now()+w.left;w.running=true;w.show=true}},
@@ -619,6 +657,7 @@ if(MODE==='panel'){
   $('#fAccent').addEventListener('input',e=>{S.accent=e.target.value;commit()});
 
   $('#fGame').addEventListener('input',e=>{const n=parseInt(e.target.value,10);S.game=isNaN(n)||n<0?0:n;commit()});
+  $('#fFouls').addEventListener('change',e=>{S.showFouls=e.target.checked;commit()});
 
   let pvOn=false;
   $('#pvBtn').addEventListener('click',()=>{
@@ -644,11 +683,13 @@ if(MODE==='panel'){
       if(document.activeElement!==who){if(who._o!==opts){who.innerHTML=opts;who._o=opts}who.value=s.pid}
       setVal(tr.querySelector('[data-f=role]'),s.role);
       tr.querySelector('.rc').className='rc rc-'+(s.role==='sheriff'?'gold':s.role==='don'?'don':ROLES[s.role].team);
-      const sel=tr.querySelector('[data-f=status]'),kl=tr.querySelector('.killed');
+      const sel=tr.querySelector('[data-f=status]'),kl=tr.querySelector('.killed'),fo=+s.fouls||0,fn=tr.querySelector('.fn');
       if(st==='killed'){sel.style.display='none';kl.textContent=`Убит (ночь ${shotNight(i)+1})`}
-      else{sel.style.display='';kl.textContent='';setVal(sel,s.status==='voted'?'voted':'alive')}
+      else if(fo>=4){sel.style.display='none';kl.textContent='Удалён (4 фола)'}
+      else{sel.style.display='';kl.textContent='';setVal(sel,s.status==='voted'||s.status==='removed'?s.status:'alive')}
+      fn.textContent=fo;fn.className='fn'+(fo>=4?' f4':fo===3?' f3':'');
     });
-    setVal($('#fTitle'),S.title);setVal($('#fGame'),S.game);setVal($('#fAccent'),okColor(S.accent)?S.accent.toLowerCase():ACCENT_DEF);
+    setVal($('#fTitle'),S.title);setVal($('#fGame'),S.game);setVal($('#fAccent'),okColor(S.accent)?S.accent.toLowerCase():ACCENT_DEF);$('#fFouls').checked=S.showFouls!==false;
     UI_FIELDS.forEach(([k,,,,,un])=>{setVal($('#u_'+k),S.ui[k]);$('#o_'+k).textContent=(un==='×'?(+S.ui[k]).toFixed(2):S.ui[k])+(un==='×'?'×':' px')});
 
     const sig=S.roster.map(r=>r.id).join(',');
@@ -691,7 +732,7 @@ if(MODE==='panel'){
   let sent={};
   function buildView(){
     return {t:Date.now(),title:S.title,game:+S.game||0,
-      seats:S.seats.map((s,i)=>({pid:s.pid||'',nick:seatNick(i),role:s.role,status:statusOf(i)})),
+      seats:S.seats.map((s,i)=>({pid:s.pid||'',nick:seatNick(i),role:s.role,status:statusOf(i),fouls:+s.fouls||0})),showFouls:S.showFouls!==false,
       nights:S.nights.map(n=>({shot:n.shot||'',check:n.check||'',don:n.don||''})),
       ui:Object.assign({},UI_DEF,S.ui),accent:okColor(S.accent)?S.accent:ACCENT_DEF,
       wait:{show:!!S.wait.show,running:!!S.wait.running,remain:waitLeft(),sentAt:Date.now()}};
