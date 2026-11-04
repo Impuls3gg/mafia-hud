@@ -55,11 +55,15 @@ body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;f
 /* плашки игроков */
 #stage{--th:236px;--ts:1;--gap:12px;--mb:30px;--side:40px}
 .row{position:absolute;left:var(--side);right:var(--side);bottom:var(--mb);display:flex;gap:var(--gap)}
-.tile{position:relative;flex:1;min-width:0;height:var(--th)}
+.tile{position:relative;flex:1;min-width:0;height:var(--th);transition:transform .5s cubic-bezier(.3,.7,.3,1)}
+.tile.out{transform:translateY(min(16px,var(--mb)))} /* выбывший игрок проседает, но не уходит за край кадра */
 .tile .body{position:absolute;inset:0;background:#1a1a1f;overflow:hidden;transition:filter .35s,opacity .35s}
 .tile .ph{position:absolute;left:0;right:0;top:0;bottom:calc(42px*var(--ts));background:#26262c center top/cover no-repeat}
 .tile .ph svg{position:absolute;left:12%;bottom:0;width:76%;fill:#3a3a42}
 .tile .ph::after{content:"";position:absolute;left:0;right:0;bottom:0;height:calc(40px*var(--ts));background:linear-gradient(rgba(0,0,0,0),rgba(0,0,0,.6))}
+/* смена фото: новое проявляется сверху вниз с мягким краем */
+.tile .swap{position:absolute;left:0;right:0;top:0;bottom:0;background:center top/cover no-repeat;-webkit-mask:linear-gradient(#000 71%,transparent) 0 350%/100% 140% no-repeat;animation:ph-swap .7s ease-in-out forwards}
+@keyframes ph-swap{to{-webkit-mask-position:0 0}}
 .tile .accent{position:absolute;left:0;right:0;top:0;height:4px;background:var(--red)}
 .tile.team-black .accent{background:#000}
 .tile.r-sheriff .accent{background:var(--brass)}
@@ -73,6 +77,13 @@ body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;f
 .tile .badge .rb-rev,.card .bd .rb-rev{width:88%}
 .rb-star{fill:var(--brass-ink)}
 .rb-hat .hb{fill:var(--don)}
+/* название роли: выезжает из-под значка при выдаче активной роли */
+.tile .rp{position:absolute;left:calc(46px*var(--ts));top:calc(12px*var(--ts));height:calc(38px*var(--ts));overflow:hidden;pointer-events:none}
+.tile .rp span{display:flex;align-items:center;height:100%;padding:0 calc(10px*var(--ts));font-size:calc(17px*var(--ts));font-weight:600;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;transform:translateX(-101%);transition:transform .3s cubic-bezier(.2,.7,.2,1)}
+.tile .rp.on span{transform:none}
+.tile.r-sheriff .rp span{background:var(--brass);color:var(--brass-ink)}
+.tile.r-don .rp span{background:var(--don);color:#fff}
+.tile.r-mafia .rp span{background:#000;color:#fff;box-shadow:inset 0 2px 0 rgba(255,255,255,.45),inset 0 -2px 0 rgba(255,255,255,.45),inset -2px 0 0 rgba(255,255,255,.45)}
 .tile .bot{position:absolute;left:0;right:0;bottom:0;height:calc(42px*var(--ts));display:flex;background:var(--plate)}
 .tile .num{width:calc(42px*var(--ts));flex:none;display:flex;align-items:center;justify-content:center;font-size:calc(26px*var(--ts));font-weight:700;background:var(--red)}
 .tile.team-black .num{background:#000;box-shadow:inset 0 0 0 2px rgba(255,255,255,.35)}
@@ -146,6 +157,13 @@ label.thumb input{position:absolute;opacity:0;width:1px;height:1px}
 .rr{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #23232a}
 .rr input.rn{flex:1}
 .rr .seat{font-size:12px;color:#8a877f;min-width:62px;text-align:right}
+.rr .rm{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.rr .rt{display:flex;align-items:center;gap:6px}
+.rslots{display:flex;gap:7px}
+.rslot{position:relative}
+label.thumb.sm{width:34px;height:44px}
+label.thumb.sm span{font-size:10px}
+.panel .rslot button{position:absolute;top:-4px;right:-5px;padding:0 3px;font-size:11px;line-height:13px}
 .mini{width:30px;height:38px;border-radius:3px;background:#26262c center top/cover no-repeat;flex:none;position:relative;overflow:hidden}
 .mini svg{position:absolute;left:10%;bottom:0;width:80%;fill:#3a3a42}
 .pt select.who{width:100%;min-width:150px}
@@ -246,6 +264,7 @@ const BADGE={
   don:'<svg viewBox="0 0 24 24" class="rb-hat"><path fill="#fff" d="M6 16c0-3.6.7-7.3 2.3-9.1.8-.9 2-.7 2.7 0 .5.5 1.5.5 2 0 .7-.7 1.9-.9 2.7 0C17.3 8.7 18 12.4 18 16c-1.8.6-3.8.9-6 .9s-4.2-.3-6-.9z"/><path fill="#fff" d="M2 16.2c2.6 1.5 6 2.3 10 2.3s7.4-.8 10-2.3c-.4 2.1-4.6 3.8-10 3.8S2.4 18.3 2 16.2z"/><path class="hb" d="M6.2 13.6c1.8.6 3.7.9 5.8.9s4-.3 5.8-.9v1.6c-1.8.6-3.7.9-5.8.9s-4-.3-5.8-.9z"/></svg>',
   mafia:`<img class="rb-rev" src="${REVOLVER_IMG}" alt="">`
 };
+const ROLE_PLATE_MS=4000;
 const UI_DEF={th:236,ts:1,gap:12,mb:30,side:40,ns:1,is:1};
 const UI_FIELDS=[
   ['th','Высота плашек игроков',120,400,2,'px'],
@@ -322,6 +341,7 @@ const Net=(()=>{
 /* ================= СОСТОЯНИЕ ПУЛЬТА ================= */
 const newId=()=>'p'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const emptySeat=pid=>({pid:pid||'',role:'civ',status:'alive',fouls:0});
+const roleKeys=id=>Object.keys(ROLES).map(r=>id+'.'+r); // ключи фото игрока для каждой роли
 function defaultState(){
   const roster=Array.from({length:10},(_,i)=>({id:newId()+i,nick:'Игрок '+(i+1)}));
   return {v:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,photoVer:0,showFouls:true,wait:{show:false,running:false,endAt:0,left:600000,total:600000}};
@@ -341,14 +361,15 @@ if(MODE==='panel'){
   }
   S=Object.assign(defaultState(),S);
   S.ui=Object.assign({},UI_DEF,S.ui);
-  S.roster.forEach(r=>{const p=lsGet(PKEY+r.id);if(p)photos[r.id]=p});
+  S.roster.forEach(r=>[r.id,...roleKeys(r.id)].forEach(k=>{const p=lsGet(PKEY+k);if(p)photos[k]=p}));
 }
 function waitLeft(){const w=S.wait;return w.running?Math.max(0,w.endAt-Date.now()):Math.max(0,w.left)}
 const fmtT=ms=>{let t=Math.ceil(ms/1000);const h=Math.floor(t/3600),m=Math.floor(t%3600/60),sec=t%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(sec).padStart(2,'0')};
 function commit(){S.v=Date.now();lsSet(KEY,JSON.stringify(S));publish();renderFn()}
 const person=id=>S.roster.find(r=>r.id===id)||null;
 const seatNick=i=>{const p=person(S.seats[i].pid);return p?p.nick:''};
-const seatPhoto=i=>photos[S.seats[i].pid]||null;
+const photoKey=s=>s.pid&&photos[s.pid+'.'+s.role]?s.pid+'.'+s.role:s.pid; // для экранов: фото роли, а если его нет — обычное
+const seatPhoto=i=>photos[S.seats[i].pid]||null; // в пульте всегда обычное фото
 const team=i=>ROLES[S.seats[i].role].team;
 function shotNight(i){return S.nights.findIndex(n=>n.shot===String(i))}
 function statusOf(i){const s=S.seats[i];return shotNight(i)>=0?'killed':(s.status==='removed'||(+s.fouls||0)>=4)?'removed':(s.status==='voted'?'voted':'alive')}
@@ -366,7 +387,7 @@ if(MODE!=='panel'){
 
   function prune(){
     if(!V||!V.seats)return;
-    const keep=new Set(V.seats.map(s=>s.pid).filter(Boolean));
+    const keep=new Set(V.seats.map(s=>s.ph||s.pid).filter(Boolean));
     try{for(let k=localStorage.length-1;k>=0;k--){const key=localStorage.key(k);if(key&&key.startsWith(VPKEY)&&!keep.has(key.slice(VPKEY.length)))localStorage.removeItem(key)}}catch(e){}
   }
   function applyView(v){
@@ -391,11 +412,31 @@ if(MODE!=='panel'){
     const stage=document.getElementById('stage'),q=s=>stage.querySelector(s),row=q('.row');
     const tiles=Array.from({length:10},(_,i)=>{
       const t=document.createElement('div');
-      t.innerHTML=`<div class="body"><div class="ph"></div><div class="accent"></div><div class="badge"></div>
+      t.innerHTML=`<div class="body"><div class="ph"></div><div class="accent"></div><div class="badge"></div><div class="rp"><span></span></div>
         <div class="bot"><div class="num">${i+1}</div><div class="nick"><span></span></div></div></div><div class="st"></div><div class="fc"></div>`;
       row.appendChild(t);return t;
     });
-    const paint=(el,p)=>{if(el._p===p)return;el._p=p;el.style.backgroundImage=p?`url("${p}")`:'none';el.innerHTML=p?'':SIL};
+    const paintNow=(el,p)=>{el.style.backgroundImage=p?`url("${p}")`:'none';el.innerHTML=p?'':SIL};
+    const paint=(el,p)=>{
+      if(el._p===p)return;
+      const first=el._p===undefined,prev=el._p;el._p=p;
+      if(first){paintNow(el,p);return}
+      if(el._swap){clearTimeout(el._swap);el._swap=null;paintNow(el,prev)} // прошлая смена ещё идёт: сразу её завершаем
+      const id=el._id=(el._id||0)+1;
+      const start=()=>{
+        if(el._id!==id)return; // пока фото декодировалось, его уже сменили
+        const l=document.createElement('div');l.className='swap';
+        if(p)l.style.backgroundImage=`url("${p}")`;else{l.style.backgroundColor='#26262c';l.innerHTML=SIL}
+        el.appendChild(l);
+        // таймер, а не animationend: в скрытом источнике OBS анимация может не дойти до конца
+        el._swap=setTimeout(()=>{
+          if(p)el.style.backgroundImage=`url("${p}")`; // слой снимаем чуть позже, когда под ним уже новое фото
+          el._swap=setTimeout(()=>{el._swap=null;paintNow(el,p)},80);
+        },700);
+      };
+      // слой запускается только с готовой картинкой, иначе виден кадр без фото
+      if(p){const im=new Image();im.src=p;im.decode().then(start,start)}else start();
+    };
     draw=function(){
       applyAccent(V&&V.accent);
       stage.style.visibility=V?'visible':'hidden';
@@ -425,8 +466,15 @@ if(MODE!=='panel'){
       tiles.forEach((t,i)=>{
         const s=V.seats[i]||{},role=ROLES[s.role]?s.role:'civ',st=s.status||'alive';
         t.className=`tile team-${ROLES[role].team} r-${role} s-${st}`+(st!=='alive'?' out':'');
-        paint(t.querySelector('.ph'),photo(s.pid));
-        const bd=t.querySelector('.badge');if(bd._r!==role){bd._r=role;bd.innerHTML=BADGE[role]||''}
+        // фото ещё в пути (s.hp): оставляем прежнее, с его приходом draw повторится
+        const pic=photo(s.ph||s.pid);if(pic||!s.hp)paint(t.querySelector('.ph'),pic);
+        const bd=t.querySelector('.badge'),was=bd._r;
+        if(was!==role){
+          bd._r=role;bd.innerHTML=BADGE[role]||'';
+          // при выдаче активной роли её название ненадолго выезжает рядом со значком; при загрузке страницы не срабатывает
+          const rp=t.querySelector('.rp');clearTimeout(rp._t);rp.classList.remove('on');
+          if(was&&BADGE[role]){rp.firstChild.textContent=ROLES[role].t;rp.classList.add('on');rp._t=setTimeout(()=>rp.classList.remove('on'),ROLE_PLATE_MS)}
+        }
         t.querySelector('.nick span').textContent=s.nick||'—';
         t.querySelector('.st').innerHTML=st==='killed'?IC.cross+'<span>УБИТ</span>':st==='voted'?IC.hand+'<span>ЗАГОЛОСОВАН</span>':st==='removed'?IC.card+'<span>УДАЛЁН</span>':'';
         // фолы видны у игроков в игре и у удалённых, если показ включён в пульте
@@ -488,7 +536,7 @@ if(MODE!=='panel'){
       const list=[];
       if(V&&V.seats)V.seats.forEach((s,i)=>{
         if(!s.pid)return;const role=ROLES[s.role]?s.role:'civ';
-        if(MODE!=='wait'&&ROLES[role].team===MODE)list.push({i,nick:s.nick,role,ph:photo(s.pid)});
+        if(MODE!=='wait'&&ROLES[role].team===MODE)list.push({i,nick:s.nick,role,ph:photo(s.ph||s.pid)});
       });
       const ns=JSON.stringify(list.map(x=>[x.i,x.nick,x.role,x.ph?x.ph.length:0]));
       if(ns===sig)return;sig=ns;
@@ -615,7 +663,7 @@ if(MODE==='panel'){
       lines.forEach(n=>S.roster.push({id:newId(),nick:n}));$('#bulk').value=''},
     delPerson(el){const id=el.dataset.id,p=person(id);if(!p)return;
       if(!confirm(`Удалить игрока «${p.nick}» из списка турнира?`))return;
-      S.roster=S.roster.filter(r=>r.id!==id);S.seats.forEach(s=>{if(s.pid===id)s.pid=''});setPhoto(id,null)},
+      S.roster=S.roster.filter(r=>r.id!==id);S.seats.forEach(s=>{if(s.pid===id)s.pid=''});[id,...roleKeys(id)].forEach(k=>setPhoto(k,null))},
     delPhoto(el){setPhoto(el.dataset.id,null)}
   };
   let pendingFocus=null;
@@ -698,19 +746,22 @@ if(MODE==='panel'){
     if(sig!==rosterSig){
       rosterSig=sig;
       rl.innerHTML=S.roster.length?S.roster.map(r=>`<div class="rr" data-id="${r.id}">
-        <label class="thumb" title="Загрузить фото"><input type="file" accept="image/*" data-id="${r.id}" aria-label="Фото игрока"><span>+</span></label>
-        <button data-a="delPhoto" data-id="${r.id}" title="Удалить фото" aria-label="Удалить фото" style="padding:1px 6px">×</button>
-        <input class="rn" data-id="${r.id}" aria-label="Ник">
-        <span class="seat"></span>
-        <button data-a="delPerson" data-id="${r.id}" class="warn" aria-label="Удалить игрока">Удалить</button></div>`).join('')
+        <label class="thumb" data-k="${r.id}" title="Загрузить обычное фото"><input type="file" accept="image/*" data-id="${r.id}" aria-label="Обычное фото игрока"><span>+</span></label>
+        <button data-a="delPhoto" data-id="${r.id}" title="Удалить фото" aria-label="Удалить обычное фото" style="padding:1px 6px">×</button>
+        <div class="rm"><div class="rt"><input class="rn" data-id="${r.id}" aria-label="Ник" style="flex:1">
+          <span class="seat"></span>
+          <button data-a="delPerson" data-id="${r.id}" class="warn" aria-label="Удалить игрока">Удалить</button></div>
+          <div class="rslots">${Object.keys(ROLES).map(k=>`<div class="rslot"><label class="thumb sm" data-k="${r.id}.${k}" title="Фото для роли «${ROLES[k].t}»"><input type="file" accept="image/*" data-id="${r.id}.${k}" aria-label="Фото для роли ${ROLES[k].t}"><span>${ROLES[k].t.slice(0,3)}</span></label><button data-a="delPhoto" data-id="${r.id}.${k}" title="Удалить фото" aria-label="Удалить фото для роли ${ROLES[k].t}">×</button></div>`).join('')}</div></div></div>`).join('')
         :'<div class="muted">Список пуст. Добавьте игроков кнопкой ниже.</div>';
     }
     rl.querySelectorAll('.rr').forEach(el=>{
       const id=el.dataset.id,p=person(id);if(!p)return;
       setVal(el.querySelector('.rn'),p.nick);
-      const th=el.querySelector('label.thumb'),ph=photos[id]||null;
-      if(th._p!==ph){th._p=ph;th.style.backgroundImage=ph?`url("${ph}")`:'none';th.classList.toggle('has',!!ph)}
-      el.querySelector('[data-a=delPhoto]').style.visibility=ph?'visible':'hidden';
+      el.querySelectorAll('label.thumb').forEach(th=>{
+        const ph=photos[th.dataset.k]||null;
+        if(th._p!==ph){th._p=ph;th.style.backgroundImage=ph?`url("${ph}")`:'none';th.classList.toggle('has',!!ph)}
+        th.nextElementSibling.style.visibility=ph?'visible':'hidden';
+      });
       const si=seatOf(id);el.querySelector('.seat').textContent=si>=0?'место '+(si+1):'';
     });
     if(pendingFocus){const inp=rl.querySelector(`.rn[data-id="${pendingFocus}"]`);pendingFocus=null;if(inp){inp.focus();inp.select();inp.scrollIntoView({block:'nearest'})}}
@@ -733,13 +784,13 @@ if(MODE==='panel'){
   let sent={};
   function buildView(){
     return {t:Date.now(),title:S.title,game:+S.game||0,
-      seats:S.seats.map((s,i)=>({pid:s.pid||'',nick:seatNick(i),role:s.role,status:statusOf(i),fouls:+s.fouls||0})),showFouls:S.showFouls!==false,
+      seats:S.seats.map((s,i)=>({pid:s.pid||'',ph:photoKey(s)||'',hp:!!photos[photoKey(s)],nick:seatNick(i),role:s.role,status:statusOf(i),fouls:+s.fouls||0})),showFouls:S.showFouls!==false,
       nights:S.nights.map(n=>({shot:n.shot||'',check:n.check||'',don:n.don||''})),
       ui:Object.assign({},UI_DEF,S.ui),accent:okColor(S.accent)?S.accent:ACCENT_DEF,
       wait:{show:!!S.wait.show,running:!!S.wait.running,remain:waitLeft(),sentAt:Date.now()}};
   }
   function sendPhotos(all){
-    const seated=new Set(S.seats.map(s=>s.pid).filter(Boolean));
+    const seated=new Set(S.seats.map(photoKey).filter(Boolean));
     seated.forEach(pid=>{
       const ph=photos[pid]||null,sig=ph?ph.length+':'+ph.slice(-24):'none';
       if(all||sent[pid]!==sig){sent[pid]=sig;Net.send({kind:'photo',pid,data:ph})}
@@ -747,7 +798,7 @@ if(MODE==='panel'){
   }
   publish=function(full){
     const v=buildView();lsSet(VKEY,JSON.stringify(v));
-    Net.send({kind:'view',view:v});sendPhotos(!!full);
+    sendPhotos(!!full);Net.send({kind:'view',view:v}); // сначала фото, чтобы при смене роли плашка не мигала пустой
   };
   const seen={};
   const NAMES={overlay:'HUD',red:'Победа мирных',black:'Победа мафии'};
