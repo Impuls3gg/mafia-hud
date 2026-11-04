@@ -1,0 +1,30 @@
+services:
+  judge:
+    build: .
+    restart: unless-stopped
+    environment:
+      JUDGE_SECRET: ${JUDGE_SECRET:-}
+    ports:
+      - "${JUDGE_PUBLISH:-127.0.0.1:8787}:8787"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    profiles:
+      - https
+    depends_on:
+      - judge
+    environment:
+      DOMAIN: ${DOMAIN:-}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  caddy_data:
+  caddy_config:

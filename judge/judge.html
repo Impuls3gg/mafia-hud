@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Мафия · судья</title>
+<style>
+:root{color-scheme:dark;--red:#c41e3a;--don:#8977fe;--brass:#c9a44c;--brass-ink:#1d1607;--foul:#f2c230;--hot:#ff5a6e}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#121216;color:#e9e7e2;font:15px/1.3 'Segoe UI',Roboto,Arial,sans-serif;padding-bottom:24px}
+header{position:sticky;top:0;z-index:2;display:flex;align-items:center;gap:8px;padding:10px 14px;background:#121216;border-bottom:1px solid #26262d}
+header h1{flex:1;min-width:0;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#conn{flex:none;font-size:13px;color:#a09d95}
+#conn.ok{color:#3ecf6e}#conn.bad{color:var(--hot)}
+main{display:grid;grid-template-columns:minmax(0,1fr);gap:4px;padding:10px}
+h2{margin:16px 2px 4px;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#a09d95}
+h2:first-child{margin-top:4px}
+.line{display:flex;align-items:center;background:#18181d;border:1px solid #26262d;border-radius:8px}
+.seat.open .line{border-radius:8px 8px 0 0;background:#1f1f25}
+.seat.out .num{opacity:.55}
+.seat.out .nick{color:#77757d;text-decoration:line-through}
+.num{width:30px;height:30px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:4px;background:var(--red);color:#fff;font-weight:700}
+.num.mafia{background:#000;box-shadow:inset 0 0 0 2px rgba(255,255,255,.4)}
+.num.sheriff{background:var(--brass);color:var(--brass-ink)}
+.num.don{background:var(--don)}
+.nick{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.more{padding:8px 10px 10px;background:#18181d;border:1px solid #26262d;border-top:0;border-radius:0 0 8px 8px}
+.state{margin-bottom:6px;font-size:13px;color:var(--hot)}
+.seg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+button{min-height:44px;min-width:0;padding:0 2px;font:inherit;font-size:14px;color:inherit;background:#26262d;border:1px solid #34343c;border-radius:6px;touch-action:manipulation}
+button:disabled{opacity:.45}
+button.on{background:#e9e7e2;border-color:#e9e7e2;color:#121216;font-weight:600}
+button.row{flex:1;display:flex;align-items:center;gap:10px;min-height:48px;padding:8px 10px;font-size:15px;text-align:left;background:none;border:0}
+button.step{flex:none;width:44px;margin:2px;font-size:22px;line-height:1}
+.count{flex:none;min-width:28px;text-align:center;font-size:17px;font-weight:700}
+.count.f3{color:#ff8c1a}.count.f4{color:var(--hot)}
+#msg{padding:32px 16px;text-align:center;color:#a09d95}
+</style>
+</head>
+<body>
+<header><h1 id="title">Судья</h1><span id="conn">Подключение…</span></header>
+<div id="msg">Ждём данные от пульта…</div>
+<main id="seats"></main>
+<script>
+const ROLES=[['civ','Мир'],['sheriff','Шер'],['mafia','Маф'],['don','Дон']];
+const STATE={killed:n=>`Убит, ночь ${n}`,voted:()=>'Заголосован',removed:()=>'Удалён'};
+const room=location.hash.slice(1);
+const $=id=>document.getElementById(id);
+let ws=null,panelOn=false,last=null,open=null;
+
+function setConn(cls,text){$('conn').className=cls;$('conn').textContent=text}
+function send(cmd){if(ws&&ws.readyState===1&&panelOn)ws.send(JSON.stringify(Object.assign({kind:'cmd'},cmd)))}
+function btn(text,on,cmd,after){
+  const b=document.createElement('button');
+  b.type='button';b.textContent=text;b.disabled=!panelOn;
+  if(on)b.className='on';
+  b.onclick=()=>{send(cmd);if(after)after()};
+  return b;
+}
+function row(key,i,s,out,fill,extra=[]){
+  const isOpen=open===key,card=document.createElement('section');
+  card.className='seat'+(isOpen?' open':'')+(out?' out':'');
+  const head=document.createElement('button');
+  head.type='button';head.className='row';head.setAttribute('aria-expanded',isOpen);
+  head.onclick=()=>{open=isOpen?null:key;draw()};
+  const num=document.createElement('span');num.className='num '+s.role;num.textContent=i+1;
+  const nick=document.createElement('span');nick.className='nick';nick.textContent=s.nick||'— свободно —';
+  head.append(num,nick);
+  const line=document.createElement('div');line.className='line';line.append(head,...extra);card.append(line);
+  if(isOpen){const more=document.createElement('div');more.className='more';fill(more);card.append(more)}
+  return card;
+}
+function heading(text){const h=document.createElement('h2');h.textContent=text;return h}
+function roleControls(more,s,i){
+  const close=()=>{open=null;draw()},seg=document.createElement('div');seg.className='seg';
+  ROLES.forEach(([r,t])=>seg.append(btn(t,s.role===r,{a:'role',i,v:r},close)));
+  more.append(seg);
+}
+function gameControls(more,s,i){
+  if(s.st!=='alive'){const st=document.createElement('div');st.className='state';st.textContent=STATE[s.st](s.kn);more.append(st)}
+  const acts=document.createElement('div');acts.className='acts';
+  acts.append(btn('Убит',s.st==='killed',{a:'shot',i}),
+    btn('Заголосован',s.st==='voted',{a:'status',i,v:s.st==='voted'?'alive':'voted'}),
+    btn('Удалён',s.st==='removed',{a:'status',i,v:s.st==='removed'?'alive':'removed'}));
+  more.append(acts);
+}
+function foulCount(s,i){
+  const n=document.createElement('span');n.className='count'+(s.fouls>=4?' f4':s.fouls===3?' f3':'');n.textContent=s.fouls;
+  const step=(text,d,label,blocked)=>{
+    const b=btn(text,false,{a:'foul',i,d});
+    b.classList.add('step');b.disabled=!panelOn||blocked;b.setAttribute('aria-label',label);
+    return b;
+  };
+  return [step('−',-1,'Снять фол',s.fouls<1),n,step('+',1,'Добавить фол',s.fouls>=4)];
+}
+function draw(){
+  const box=$('seats');box.textContent='';
+  if(!last)return;
+  $('msg').hidden=true;
+  $('title').textContent=(last.title||'Судья')+(last.game?' · игра '+last.game:'');
+  box.append(heading('Роли'));
+  last.seats.forEach((s,i)=>box.append(row('role'+i,i,s,false,more=>roleControls(more,s,i))));
+  box.append(heading('Фолы и статусы'));
+  last.seats.forEach((s,i)=>box.append(row('game'+i,i,s,s.st!=='alive',more=>gameControls(more,s,i),foulCount(s,i))));
+}
+function connect(){
+  ws=new WebSocket(location.origin.replace(/^http/,'ws')+'/ws?room='+encodeURIComponent(room)+'&role=judge');
+  ws.onmessage=e=>{
+    const m=JSON.parse(e.data);
+    if(m.kind==='peers'){
+      const was=panelOn;panelOn=m.panel>0;
+      setConn(panelOn?'ok':'bad',panelOn?'На связи':'Пульт не подключён');
+      if(panelOn&&!was)ws.send(JSON.stringify({kind:'hello'}));
+      draw();
+    }else if(m.kind==='state'){last=m;draw()}
+  };
+  ws.onclose=e=>{panelOn=false;setConn('bad',e.code===4403?'Пульт не подключён':'Нет связи, переподключаюсь…');draw();setTimeout(connect,2000)};
+}
+if(/^[a-f0-9]{32}$/.test(room))connect();
+else{setConn('bad','Неверная ссылка');$('msg').textContent='Откройте полную ссылку из пульта.'}
+</script>
+</body>
+</html>

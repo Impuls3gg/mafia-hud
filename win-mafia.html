@@ -344,7 +344,7 @@ const emptySeat=pid=>({pid:pid||'',role:'civ',status:'alive',fouls:0});
 const roleKeys=id=>Object.keys(ROLES).map(r=>id+'.'+r); // ключи фото игрока для каждой роли
 function defaultState(){
   const roster=Array.from({length:10},(_,i)=>({id:newId()+i,nick:'Игрок '+(i+1)}));
-  return {v:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,photoVer:0,showFouls:true,wait:{show:false,running:false,endAt:0,left:600000,total:600000}};
+  return {v:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,photoVer:0,showFouls:true,judge:{url:'',room:'',key:''},wait:{show:false,running:false,endAt:0,left:600000,total:600000}};
 }
 let S=null,photos={},renderFn=()=>{},publish=()=>{};
 if(MODE==='panel'){
@@ -591,6 +591,11 @@ if(MODE==='panel'){
         <div class="fl3"><input id="cHost" aria-label="Адрес"><input id="cPort" type="number" aria-label="Порт"><input id="cPw" type="password" placeholder="пароль, если включён" aria-label="Пароль WebSocket"><button data-a="reconnect">Подключить</button></div>
         <div class="disp" id="cDisp"></div>
       </div>
+      <div class="box"><h2>Судья с телефона</h2>
+        <div class="bar"><input id="jUrl" style="flex:1" placeholder="https://адрес-сервера" aria-label="Адрес сервера судьи"><input id="jKey" type="password" style="flex:1" placeholder="пароль сервера, если есть" aria-label="Пароль сервера судьи"><button data-a="jConnect">Подключить</button></div>
+        <div class="muted" id="jSt" style="margin-top:6px">Не подключено</div>
+        <div class="bar" style="margin-top:8px"><input id="jLink" style="flex:1" readonly aria-label="Ссылка для судьи"><button data-a="jCopy">Копировать</button><button data-a="jNew">Новая ссылка</button></div>
+      </div>
       <div class="box"><h2>Название турнира</h2>
         <input id="fTitle" style="width:100%" placeholder="Например: Кубок города, 2 тур" aria-label="Название турнира">
         <div class="ac-row"><span>Акцентный цвет</span><input type="color" id="fAccent" aria-label="Акцентный цвет турнира">
@@ -780,6 +785,61 @@ if(MODE==='panel'){
     document.querySelectorAll('#nights select').forEach(s=>{s.value=S.nights[+s.dataset.k][s.dataset.f]??''});
   };
 
+  /* ---- судья с телефона: команды идут через сервер судьи, главным остаётся этот пульт ---- */
+  const Judge=(()=>{
+    let ws=null,timer=null;
+    const newRoom=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
+    const httpUrl=()=>{const u=S.judge.url.trim().replace(/\/+$/,'');return !u||/^https?:\/\//.test(u)?u:'https://'+u};
+    const setSt=t=>{$('#jSt').textContent=t};
+    function showLink(){const u=httpUrl();$('#jLink').value=u?u+'/#'+S.judge.room:''}
+    function stateMsg(){
+      return {kind:'state',title:S.title,game:+S.game||0,seats:S.seats.map((s,i)=>({nick:seatNick(i),role:s.role,st:statusOf(i),kn:shotNight(i)+1,fouls:+s.fouls||0}))};
+    }
+    function push(){if(ws&&ws.readyState===1)ws.send(JSON.stringify(stateMsg()))}
+    // ночь для кнопки «Убит»: текущая, а если в ней пусто, предыдущая без отстрела (там уже могут быть проверки)
+    function shotTarget(){
+      const ns=S.nights;let k=ns.length-1;
+      if(k>0&&!ns[k].shot&&!ns[k].check&&!ns[k].don&&!ns[k-1].shot)k--;
+      return k;
+    }
+    const J={
+      role(c){if(ROLES[c.v])S.seats[c.i].role=c.v},
+      foul(c){const s=S.seats[c.i];s.fouls=Math.min(4,Math.max(0,(+s.fouls||0)+(c.d>0?1:-1)))},
+      status(c){if(['alive','voted','removed'].includes(c.v)){const s=S.seats[c.i];s.status=c.v;if(c.v==='alive'&&(+s.fouls||0)>=4)s.fouls=3}},
+      shot(c){
+        const was=shotNight(c.i);
+        if(was>=0){S.nights[was].shot='';return}
+        S.nights[shotTarget()].shot=String(c.i);
+        const last=S.nights[S.nights.length-1];
+        if(last.shot||last.check||last.don)S.nights.push({shot:'',check:'',don:''});
+      }
+    };
+    function onMsg(e){
+      let m;try{m=JSON.parse(e.data)}catch(err){return}
+      if(m.kind==='peers')setSt(m.judge?'Судья на связи':'Сервер подключён, судья ещё не зашёл');
+      else if(m.kind==='hello')push();
+      else if(m.kind==='cmd'&&J[m.a]&&Number.isInteger(m.i)&&m.i>=0&&m.i<S.seats.length){J[m.a](m);commit()}
+    }
+    function connect(){
+      clearTimeout(timer);
+      if(ws){ws.onclose=null;ws.close();ws=null}
+      showLink();
+      const u=httpUrl();
+      if(!u){setSt('Не подключено');return}
+      setSt('Подключение…');
+      const me=ws=new WebSocket(u.replace(/^http/,'ws')+'/ws?room='+S.judge.room+'&role=panel&key='+encodeURIComponent(S.judge.key||''));
+      me.onmessage=onMsg;
+      me.onopen=push;
+      me.onclose=e=>{if(e.code===4401){setSt('Неверный пароль сервера');return}setSt('Нет связи с сервером судьи, переподключаюсь…');timer=setTimeout(connect,3000)};
+    }
+    if(!S.judge.room)S.judge.room=newRoom();
+    A.jConnect=()=>{S.judge.url=$('#jUrl').value;S.judge.key=$('#jKey').value;commit();connect()};
+    A.jNew=()=>{if(!confirm('Создать новую ссылку? Старая перестанет работать.'))return;S.judge.room=newRoom();connect()};
+    A.jCopy=()=>{const el=$('#jLink');el.select();document.execCommand('copy')};
+    $('#jUrl').value=S.judge.url;$('#jKey').value=S.judge.key||'';
+    return {connect,push};
+  })();
+
   /* ---- отправка данных на экраны ---- */
   let sent={};
   function buildView(){
@@ -799,6 +859,7 @@ if(MODE==='panel'){
   publish=function(full){
     const v=buildView();lsSet(VKEY,JSON.stringify(v));
     sendPhotos(!!full);Net.send({kind:'view',view:v}); // сначала фото, чтобы при смене роли плашка не мигала пустой
+    Judge.push();
   };
   const seen={};
   const NAMES={overlay:'HUD',red:'Победа мирных',black:'Победа мафии'};
@@ -830,6 +891,7 @@ if(MODE==='panel'){
   Net.connect();
   renderFn();
   publish(true);
+  Judge.connect();
   Net.send({kind:'ping'});
 }
 </script>
