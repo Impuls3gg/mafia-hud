@@ -1,6 +1,10 @@
+name: mafia-judge
+
 services:
   judge:
-    build: .
+    build:
+      context: ..
+      dockerfile: judge/Dockerfile
     restart: unless-stopped
     environment:
       JUDGE_SECRET: ${JUDGE_SECRET:-}

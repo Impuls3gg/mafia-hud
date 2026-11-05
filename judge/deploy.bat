@@ -1,13 +1,11 @@
 @echo off
 chcp 65001 >nul
-cd /d "%~dp0"
 set "HOST=%~1"
 set "ADDRESS=%~2"
 if "%HOST%"=="" set /p "HOST=IP сервера: "
 if "%HOST%"=="" goto missing
-if "%ADDRESS%"=="" if "%~1"=="" set /p "ADDRESS=Домен (если его нет, нажмите Enter): "
-if "%ADDRESS%"=="" set "ADDRESS=%HOST%"
-tar -cf - server.js judge.html Dockerfile compose.yaml Caddyfile server-setup.sh | ssh -o StrictHostKeyChecking=accept-new root@%HOST% "mkdir -p /opt/mafia-judge && tar -xf - -C /opt/mafia-judge --no-same-owner && sed -i 's/\r$//' /opt/mafia-judge/server-setup.sh && bash /opt/mafia-judge/server-setup.sh %ADDRESS%"
+if "%ADDRESS%"=="" if "%~1"=="" set /p "ADDRESS=Новый домен (если не нужен, нажмите Enter): "
+ssh -o StrictHostKeyChecking=accept-new root@%HOST% "(command -v git >/dev/null || (apt-get update -qq && apt-get install -y -qq git)) && ([ -d /opt/mafia-hud/.git ] || git clone -q https://github.com/Impuls3gg/mafia-hud.git /opt/mafia-hud) && FALLBACK_ADDRESS=%HOST% bash /opt/mafia-hud/judge/update.sh %ADDRESS%"
 if errorlevel 1 echo Установка не завершена. Проверьте сообщения выше.
 pause
 exit /b

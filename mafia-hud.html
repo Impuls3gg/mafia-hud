@@ -297,14 +297,27 @@ const Net=(()=>{
   if(qs.get('port'))cfg.port=+qs.get('port');
   if(qs.has('pw'))cfg.pw=qs.get('pw');
   let ws=null,ready=false,status='connecting',timer=null;
+  /* экран, открытый с сервера, получает данные только через него */
+  const screenRoom=qs.get('room')||'';
+  let relay=null,relayTimer=null,relayCfg=screenRoom?{url:location.origin,room:screenRoom,role:'screen',key:''}:null;
   const handlers=[],statusCbs=[],openCbs=[];
   let bc=null;try{bc=new BroadcastChannel('mafia-hud-v5');bc.onmessage=e=>deliver(e.data)}catch(e){}
   function deliver(m){if(m&&m.app==='mafiahud'&&m.from!==CLIENT)handlers.forEach(h=>{try{h(m)}catch(e){console.error(e)}})}
   function setStatus(s){status=s;statusCbs.forEach(f=>f(s))}
   async function sha(s){const h=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(s));let b='';new Uint8Array(h).forEach(x=>b+=String.fromCharCode(x));return btoa(b)}
   function retry(ms){clearTimeout(timer);timer=setTimeout(connect,ms||3000)}
+  function connectRelay(){
+    clearTimeout(relayTimer);
+    if(relay){relay.onclose=null;relay.close();relay=null}
+    if(!relayCfg)return;
+    const me=relay=new WebSocket(relayCfg.url.replace(/^http/,'ws')+'/ws?room='+relayCfg.room+'&role='+relayCfg.role+'&key='+encodeURIComponent(relayCfg.key));
+    me.onopen=()=>openCbs.forEach(f=>f());
+    me.onmessage=ev=>{try{deliver(JSON.parse(ev.data))}catch(e){}};
+    me.onclose=ev=>{if(ev.code!==4401)relayTimer=setTimeout(connectRelay,3000)};
+  }
   function connect(){
     clearTimeout(timer);
+    if(screenRoom){connectRelay();return}
     if(ws){ws.onclose=null;ws.onmessage=null;try{ws.close()}catch(e){}}
     ready=false;setStatus('connecting');
     let me;
@@ -328,11 +341,12 @@ const Net=(()=>{
   function send(obj){
     const m=Object.assign({app:'mafiahud',from:CLIENT},obj);
     try{bc&&bc.postMessage(m)}catch(e){}
+    if(relay&&relay.readyState===1){try{relay.send(JSON.stringify(m))}catch(e){}}
     if(ready&&ws&&ws.readyState===1){
       try{ws.send(JSON.stringify({op:6,d:{requestType:'BroadcastCustomEvent',requestId:Math.random().toString(36).slice(2),requestData:{eventData:m}}}))}catch(e){}
     }
   }
-  return {connect,send,on:h=>handlers.push(h),onStatus:f=>statusCbs.push(f),onOpen:f=>openCbs.push(f),
+  return {connect,send,setRelay(c){relayCfg=c;connectRelay()},on:h=>handlers.push(h),onStatus:f=>statusCbs.push(f),onOpen:f=>openCbs.push(f),
     get status(){return status},get cfg(){return cfg},
     setCfg(c){Object.assign(cfg,c);lsSet(WSKEY,JSON.stringify({host:cfg.host,port:cfg.port,pw:cfg.pw}));connect()}};
 })();
@@ -344,7 +358,7 @@ const emptySeat=pid=>({pid:pid||'',role:'civ',status:'alive',fouls:0});
 const roleKeys=id=>Object.keys(ROLES).map(r=>id+'.'+r); // ключи фото игрока для каждой роли
 function defaultState(){
   const roster=Array.from({length:10},(_,i)=>({id:newId()+i,nick:'Игрок '+(i+1)}));
-  return {v:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,photoVer:0,showFouls:true,judge:{url:'',room:'',key:''},wait:{show:false,running:false,endAt:0,left:600000,total:600000}};
+  return {v:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,photoVer:0,showFouls:true,judge:{url:'',room:'',hud:'',key:''},wait:{show:false,running:false,endAt:0,left:600000,total:600000}};
 }
 let S=null,photos={},renderFn=()=>{},publish=()=>{};
 if(MODE==='panel'){
@@ -596,6 +610,13 @@ if(MODE==='panel'){
         <div class="muted" id="jSt" style="margin-top:6px">Не подключено</div>
         <div class="bar" style="margin-top:8px"><input id="jLink" style="flex:1" readonly aria-label="Ссылка для судьи"><button data-a="jCopy">Копировать</button><button data-a="jNew">Новая ссылка</button></div>
       </div>
+      <div class="box"><h2>Худ в OBS через сервер</h2>
+        <div class="muted">Укажите адрес и пароль сервера в блоке выше. Вставьте эти ссылки в URL источников «Браузер» в OBS. Они показывают роли игроков, поэтому не публикуйте их.</div>
+        <div class="bar" style="margin-top:8px"><input id="hLink" style="flex:1" readonly aria-label="Ссылка на худ"><button data-a="hCopy">Копировать</button></div>
+        <div class="bar" style="margin-top:6px"><input id="rLink" style="flex:1" readonly aria-label="Ссылка на экран победы мирных"><button data-a="rCopy">Копировать</button></div>
+        <div class="bar" style="margin-top:6px"><input id="bLink" style="flex:1" readonly aria-label="Ссылка на экран победы мафии"><button data-a="bCopy">Копировать</button></div>
+        <div class="bar" style="margin-top:6px"><button data-a="hNew">Новые ссылки</button></div>
+      </div>
       <div class="box"><h2>Название турнира</h2>
         <input id="fTitle" style="width:100%" placeholder="Например: Кубок города, 2 тур" aria-label="Название турнира">
         <div class="ac-row"><span>Акцентный цвет</span><input type="color" id="fAccent" aria-label="Акцентный цвет турнира">
@@ -791,7 +812,11 @@ if(MODE==='panel'){
     const newRoom=()=>Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');
     const httpUrl=()=>{const u=S.judge.url.trim().replace(/\/+$/,'');return !u||/^https?:\/\//.test(u)?u:'https://'+u};
     const setSt=t=>{$('#jSt').textContent=t};
-    function showLink(){const u=httpUrl();$('#jLink').value=u?u+'/#'+S.judge.room:''}
+    function showLink(){
+      const u=httpUrl(),link=p=>u?u+p+'?room='+S.judge.hud:'';
+      $('#jLink').value=u?u+'/#'+S.judge.room:'';
+      $('#hLink').value=link('/hud');$('#rLink').value=link('/win-civilians');$('#bLink').value=link('/win-mafia');
+    }
     function stateMsg(){
       return {kind:'state',title:S.title,game:+S.game||0,seats:S.seats.map((s,i)=>({nick:seatNick(i),role:s.role,st:statusOf(i),kn:shotNight(i)+1,fouls:+s.fouls||0}))};
     }
@@ -825,6 +850,7 @@ if(MODE==='panel'){
       if(ws){ws.onclose=null;ws.close();ws=null}
       showLink();
       const u=httpUrl();
+      Net.setRelay(u?{url:u,room:S.judge.hud,role:'panel',key:S.judge.key||''}:null);
       if(!u){setSt('Не подключено');return}
       setSt('Подключение…');
       const me=ws=new WebSocket(u.replace(/^http/,'ws')+'/ws?room='+S.judge.room+'&role=panel&key='+encodeURIComponent(S.judge.key||''));
@@ -833,9 +859,12 @@ if(MODE==='panel'){
       me.onclose=e=>{if(e.code===4401){setSt('Неверный пароль сервера');return}setSt('Нет связи с сервером судьи, переподключаюсь…');timer=setTimeout(connect,3000)};
     }
     if(!S.judge.room)S.judge.room=newRoom();
+    if(!S.judge.hud)S.judge.hud=newRoom();
     A.jConnect=()=>{S.judge.url=$('#jUrl').value;S.judge.key=$('#jKey').value;commit();connect()};
     A.jNew=()=>{if(!confirm('Создать новую ссылку? Старая перестанет работать.'))return;S.judge.room=newRoom();connect()};
-    A.jCopy=()=>{const el=$('#jLink');el.select();document.execCommand('copy')};
+    A.hNew=()=>{if(!confirm('Создать новые ссылки для OBS? Старые перестанут работать, и их придётся заменить в источниках.'))return;S.judge.hud=newRoom();commit();connect()};
+    const copy=id=>{const el=$(id);el.select();document.execCommand('copy')};
+    A.jCopy=()=>copy('#jLink');A.hCopy=()=>copy('#hLink');A.rCopy=()=>copy('#rLink');A.bCopy=()=>copy('#bLink');
     $('#jUrl').value=S.judge.url;$('#jKey').value=S.judge.key||'';
     return {connect,push};
   })();
