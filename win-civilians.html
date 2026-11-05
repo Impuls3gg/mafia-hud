@@ -387,6 +387,7 @@ const photoKey=s=>s.pid&&photos[s.pid+'.'+s.role]?s.pid+'.'+s.role:s.pid; // д�
 const seatPhoto=i=>photos[S.seats[i].pid]||null; // в пульте всегда обычное фото
 const team=i=>ROLES[S.seats[i].role||'civ'].team; // игрок без роли считается мирным
 function shotNight(i){return S.nights.findIndex(n=>n.shot===String(i))}
+function nextNight(){const n=S.nights[S.nights.length-1];if(n.shot||n.check||n.don)S.nights.push({shot:'',check:'',don:''})} // как только в последней ночи появилось действие, готовим следующую
 function statusOf(i){const s=S.seats[i];return shotNight(i)>=0?'killed':(s.status==='removed'||(+s.fouls||0)>=4)?'removed':(s.status==='voted'?'voted':'alive')}
 </script>
 <!-- ================= ЭКРАНЫ: оверлей и сцены ================= -->
@@ -402,7 +403,7 @@ if(MODE!=='panel'){
 
   function prune(){
     if(!V||!V.seats)return;
-    const keep=new Set(V.seats.map(s=>s.ph||s.pid).filter(Boolean));
+    const keep=new Set(V.seats.flatMap(s=>[s.pid,s.ph]).filter(Boolean));
     try{for(let k=localStorage.length-1;k>=0;k--){const key=localStorage.key(k);if(key&&key.startsWith(VPKEY)&&!keep.has(key.slice(VPKEY.length)))localStorage.removeItem(key)}}catch(e){}
   }
   function applyView(v){
@@ -551,7 +552,7 @@ if(MODE!=='panel'){
       const list=[];
       if(V&&V.seats)V.seats.forEach((s,i)=>{
         if(!s.pid)return;const role=ROLES[s.role]?s.role:'civ';
-        if(MODE!=='wait'&&ROLES[role].team===MODE)list.push({i,nick:s.nick,role,ph:photo(s.ph||s.pid)});
+        if(MODE!=='wait'&&ROLES[role].team===MODE)list.push({i,nick:s.nick,role,ph:photo(s.pid)||photo(s.ph)});
       });
       const ns=JSON.stringify(list.map(x=>[x.i,x.nick,x.role,x.ph?x.ph.length:0]));
       if(ns===sig)return;sig=ns;
@@ -720,9 +721,7 @@ if(MODE==='panel'){
     const k=+e.target.dataset.k,f=e.target.dataset.f;
     if(S.nights[k]&&f){
       S.nights[k][f]=e.target.value;
-      // как только в последней ночи появилось любое действие, готовим следующую
-      const last=S.nights[S.nights.length-1];
-      if(k===S.nights.length-1&&(last.shot||last.check||last.don))S.nights.push({shot:'',check:'',don:''});
+      nextNight();
       commit();
     }
   });
@@ -819,7 +818,7 @@ if(MODE==='panel'){
       $('#hLink').value=link('/hud');$('#rLink').value=link('/win-civilians');$('#bLink').value=link('/win-mafia');
     }
     function stateMsg(){
-      return {kind:'state',title:S.title,game:+S.game||0,seats:S.seats.map((s,i)=>({nick:seatNick(i),role:s.role,st:statusOf(i),kn:shotNight(i)+1,fouls:+s.fouls||0}))};
+      return {kind:'state',title:S.title,game:+S.game||0,seats:S.seats.map((s,i)=>({nick:seatNick(i),role:s.role,st:statusOf(i),kn:shotNight(i)+1,fouls:+s.fouls||0})),nights:S.nights.map(n=>({shot:n.shot||'',check:n.check||'',don:n.don||''}))};
     }
     function push(){if(ws&&ws.readyState===1)ws.send(JSON.stringify(stateMsg()))}
     // ночь для кнопки «Убит»: текущая, а если в ней пусто, предыдущая без отстрела (там уже могут быть проверки)
@@ -836,15 +835,20 @@ if(MODE==='panel'){
         const was=shotNight(c.i);
         if(was>=0){S.nights[was].shot='';return}
         S.nights[shotTarget()].shot=String(c.i);
-        const last=S.nights[S.nights.length-1];
-        if(last.shot||last.check||last.don)S.nights.push({shot:'',check:'',don:''});
+        nextNight();
+      },
+      night(c){
+        const night=S.nights[c.k],v=String(c.v);
+        if(!night||!['shot','check','don'].includes(c.f)||(v!==''&&!(/^\d+$/.test(v)&&S.seats[+v])))return;
+        night[c.f]=v;
+        nextNight();
       }
     };
     function onMsg(e){
       let m;try{m=JSON.parse(e.data)}catch(err){return}
       if(m.kind==='peers')setSt(m.judge?'Судья на связи':'Сервер подключён, судья ещё не зашёл');
       else if(m.kind==='hello')push();
-      else if(m.kind==='cmd'&&J[m.a]&&Number.isInteger(m.i)&&m.i>=0&&m.i<S.seats.length){J[m.a](m);commit()}
+      else if(m.kind==='cmd'&&J[m.a]&&(m.a==='night'||(Number.isInteger(m.i)&&m.i>=0&&m.i<S.seats.length))){J[m.a](m);commit()}
     }
     function connect(){
       clearTimeout(timer);
@@ -880,7 +884,7 @@ if(MODE==='panel'){
       wait:{show:!!S.wait.show,running:!!S.wait.running,remain:waitLeft(),sentAt:Date.now()}};
   }
   function sendPhotos(all){
-    const seated=new Set(S.seats.map(photoKey).filter(Boolean));
+    const seated=new Set(S.seats.flatMap(s=>[s.pid,photoKey(s)]).filter(Boolean)); // экранам победы нужно обычное фото, худу — фото роли
     seated.forEach(pid=>{
       const ph=photos[pid]||null,sig=ph?ph.length+':'+ph.slice(-24):'none';
       if(all||sent[pid]!==sig){sent[pid]=sig;Net.send({kind:'photo',pid,data:ph})}

@@ -100,6 +100,52 @@ test('роль можно не выдавать и снять', { skip }, async 
   assert.ok(await until(() => view().seats[0].role === '' && view().seats[0].ph === 'p0'), 'роль не снялась');
 });
 
+test('судья заполняет ночные действия', { skip }, async t => {
+  const server = await startServer(t);
+  const judge = await connect(t, server.url(room('a'), 'judge'));
+  openPanel(t, gameState({ url: server.http, room: room('a'), hud: room('f'), key: '' }));
+  assert.ok(await until(() => judge.got.some(m => m.includes('"panel":1')), 20000), 'пульт не подключился');
+  judge.ws.send('{"kind":"hello"}');
+  assert.ok(await until(() => lastState(judge)));
+  assert.deepEqual(lastState(judge).nights, [{ shot: '', check: '', don: '' }]);
+
+  const night = cmd => judge.ws.send(JSON.stringify({ kind: 'cmd', a: 'night', ...cmd }));
+  night({ k: 0, f: 'check', v: '4' });
+  assert.ok(await until(() => lastState(judge).nights.length === 2), 'следующая ночь не появилась');
+  assert.equal(lastState(judge).nights[0].check, '4');
+  night({ k: 0, f: 'don', v: '1' });
+  night({ k: 0, f: 'shot', v: '7' });
+  assert.ok(await until(() => lastState(judge).seats[7].st === 'killed'), 'отстрел не отметил игрока');
+  assert.equal(lastState(judge).seats[7].kn, 1);
+  assert.deepEqual(lastState(judge).nights[0], { shot: '7', check: '4', don: '1' });
+
+  night({ k: 0, f: 'shot', v: '' });
+  assert.ok(await until(() => lastState(judge).seats[7].st === 'alive'), 'отстрел не снялся');
+
+  night({ k: 9, f: 'shot', v: '1' });
+  night({ k: 0, f: 'status', v: '1' });
+  night({ k: 0, f: 'check', v: '99' });
+  night({ k: 0, f: 'check', v: 'x' });
+  night({ k: 1, f: 'don', v: '2' });
+  assert.ok(await until(() => lastState(judge).nights[1].don === '2'));
+  assert.equal(lastState(judge).nights.length, 3);
+  assert.equal(lastState(judge).nights[0].check, '4', 'неверные команды не применяются');
+});
+
+test('экраны получают и обычное фото, и фото роли', { skip }, async t => {
+  const server = await startServer(t);
+  const state = gameState({ url: server.http, room: room('a'), hud: room('f'), key: '' });
+  state.seats[0].role = 'mafia';
+  const rolePhoto = PHOTO + 'AA';
+  openPanel(t, state, { photos: { p0: PHOTO, 'p0.mafia': rolePhoto } });
+  const screen = await joinWhenReady(t, server.url(room('f'), 'screen'));
+  assert.ok(screen, 'экран не подключился');
+  screen.ws.send(JSON.stringify({ app: 'mafiahud', from: 'test', kind: 'hello', mode: 'black' }));
+  const photos = () => screen.texts().map(text => JSON.parse(text)).filter(m => m.kind === 'photo');
+  assert.ok(await until(() => photos().some(m => m.pid === 'p0' && m.data === PHOTO)), 'нет обычного фото');
+  assert.ok(await until(() => photos().some(m => m.pid === 'p0.mafia' && m.data === rolePhoto)), 'нет фото роли');
+});
+
 test('пульт сообщает о неверном пароле и не повторяет попытки', { skip }, async t => {
   const server = await startServer(t, SECRET);
   const beacon = await statusBeacon(t);

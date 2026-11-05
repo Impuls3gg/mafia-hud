@@ -27,6 +27,14 @@ h2:first-child{margin-top:4px}
 .num.don{background:var(--don)}
 .nick{flex:1;min-width:0;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .more{padding:8px 10px 10px;background:#18181d;border:1px solid #26262d;border-top:0;border-radius:0 0 8px 8px}
+.night{padding:8px 10px 10px;background:#18181d;border:1px solid #26262d;border-radius:8px}
+.night h3{margin-bottom:6px;font-size:15px;font-weight:600}
+.act{display:grid;grid-template-columns:60px minmax(0,1fr) 62px;align-items:center;gap:6px;margin-top:4px}
+.act span{font-size:14px;color:#a09d95}
+.act select{min-width:0;min-height:44px;padding:0 6px;font:inherit;color:inherit;background:#26262d;border:1px solid #34343c;border-radius:6px}
+.act select:disabled{opacity:.45}
+.act b{font-size:13px;font-weight:600;text-align:right}
+.act b.black{color:#fff}.act b.red{color:#ff7a8a}.act b.don{color:var(--don)}.act b.sheriff{color:var(--brass)}
 .state{margin-bottom:6px;font-size:13px;color:var(--hot)}
 .seg{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
 .acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
@@ -96,6 +104,37 @@ function foulCount(s,i){
   };
   return [step('−',-1,'Снять фол',s.fouls<1),n,step('+',1,'Добавить фол',s.fouls>=4)];
 }
+// итог проверки как в пульте: игрок без роли считается мирным
+function checkResult(seat){
+  if(!seat)return ['',''];
+  if(seat.role==='don')return ['don','дон'];
+  return seat.role==='mafia'?['black','чёрный']:['red','красный'];
+}
+function donResult(seat){
+  if(!seat)return ['',''];
+  return seat.role==='sheriff'?['sheriff','шериф']:['','не шериф'];
+}
+function nightAction(k,f,label,value,result){
+  const row=document.createElement('div');row.className='act';
+  const name=document.createElement('span');name.textContent=label;
+  const sel=document.createElement('select');sel.disabled=!panelOn;sel.setAttribute('aria-label',label+', ночь '+(k+1));
+  sel.add(new Option('—',''));
+  last.seats.forEach((s,i)=>sel.add(new Option((i+1)+' '+(s.nick||'— свободно —'),String(i))));
+  sel.value=value;
+  sel.onchange=()=>send({a:'night',k,f,v:sel.value});
+  const out=document.createElement('b');[out.className,out.textContent]=result;
+  row.append(name,sel,out);
+  return row;
+}
+function nightBlock(n,k){
+  const box=document.createElement('section');box.className='night';
+  const title=document.createElement('h3');title.textContent='Ночь '+(k+1);
+  box.append(title,
+    nightAction(k,'shot','Отстрел',n.shot,['','']),
+    nightAction(k,'check','Шериф',n.check,checkResult(last.seats[n.check])),
+    nightAction(k,'don','Дон',n.don,donResult(last.seats[n.don])));
+  return box;
+}
 function draw(){
   const box=$('seats');box.textContent='';
   if(!last)return;
@@ -105,6 +144,8 @@ function draw(){
   last.seats.forEach((s,i)=>box.append(row('role'+i,i,s,false,more=>roleControls(more,s,i))));
   box.append(heading('Фолы и статусы'));
   last.seats.forEach((s,i)=>box.append(row('game'+i,i,s,s.st!=='alive',more=>gameControls(more,s,i),foulCount(s,i))));
+  box.append(heading('Ночные действия'));
+  (last.nights||[]).forEach((n,k)=>box.append(nightBlock(n,k)));
 }
 function connect(){
   ws=new WebSocket(location.origin.replace(/^http/,'ws')+'/ws?room='+encodeURIComponent(room)+'&role=judge');
