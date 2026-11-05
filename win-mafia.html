@@ -87,6 +87,7 @@ body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;f
 .tile .bot{position:absolute;left:0;right:0;bottom:0;height:calc(42px*var(--ts));display:flex;background:var(--plate)}
 .tile .num{width:calc(42px*var(--ts));flex:none;display:flex;align-items:center;justify-content:center;font-size:calc(26px*var(--ts));font-weight:700;background:var(--red)}
 .tile.team-black .num{background:#000;box-shadow:inset 0 0 0 2px rgba(255,255,255,.35)}
+.tile.team-norole .accent,.tile.team-norole .num{background:#3a3a42}
 .tile.r-sheriff .num{background:var(--brass);color:var(--brass-ink)}
 .tile.r-don .num{background:var(--don);box-shadow:none}
 .tile .nick{flex:1;min-width:0;display:flex;align-items:center;padding:0 calc(10px*var(--ts));font-size:calc(21px*var(--ts));font-weight:500}
@@ -354,7 +355,7 @@ const Net=(()=>{
 <script>
 /* ================= СОСТОЯНИЕ ПУЛЬТА ================= */
 const newId=()=>'p'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-const emptySeat=pid=>({pid:pid||'',role:'civ',status:'alive',fouls:0});
+const emptySeat=pid=>({pid:pid||'',role:'',status:'alive',fouls:0});
 const roleKeys=id=>Object.keys(ROLES).map(r=>id+'.'+r); // ключи фото игрока для каждой роли
 function defaultState(){
   const roster=Array.from({length:10},(_,i)=>({id:newId()+i,nick:'Игрок '+(i+1)}));
@@ -368,7 +369,7 @@ if(MODE==='panel'){
     const old=loadJSON('mafiaHudState.v3')||loadJSON('mafiaHudState.v2');
     if(old&&Array.isArray(old.players)){
       S.roster=old.players.map((p,i)=>({id:newId()+i,nick:p.nick||('Игрок '+(i+1))}));
-      S.seats=S.roster.map((r,i)=>({pid:r.id,role:old.players[i].role||'civ',status:old.players[i].status==='voted'?'voted':'alive'}));
+      S.seats=S.roster.map((r,i)=>({pid:r.id,role:old.players[i].role||'',status:old.players[i].status==='voted'?'voted':'alive'}));
       S.roster.forEach((r,i)=>{const ph=lsGet('mafiaHudPhoto.v2.'+i);if(ph)lsSet(PKEY+r.id,ph)});
     }
     S.v=1;lsSet(KEY,JSON.stringify(S));
@@ -384,7 +385,7 @@ const person=id=>S.roster.find(r=>r.id===id)||null;
 const seatNick=i=>{const p=person(S.seats[i].pid);return p?p.nick:''};
 const photoKey=s=>s.pid&&photos[s.pid+'.'+s.role]?s.pid+'.'+s.role:s.pid; // для экранов: фото роли, а если его нет — обычное
 const seatPhoto=i=>photos[S.seats[i].pid]||null; // в пульте всегда обычное фото
-const team=i=>ROLES[S.seats[i].role].team;
+const team=i=>ROLES[S.seats[i].role||'civ'].team; // игрок без роли считается мирным
 function shotNight(i){return S.nights.findIndex(n=>n.shot===String(i))}
 function statusOf(i){const s=S.seats[i];return shotNight(i)>=0?'killed':(s.status==='removed'||(+s.fouls||0)>=4)?'removed':(s.status==='voted'?'voted':'alive')}
 </script>
@@ -478,8 +479,8 @@ if(MODE!=='panel'){
       q('.info .g').style.display=V.game?'block':'none';
       q('.info').style.display=(V.title||V.game)?'flex':'none';
       tiles.forEach((t,i)=>{
-        const s=V.seats[i]||{},role=ROLES[s.role]?s.role:'civ',st=s.status||'alive';
-        t.className=`tile team-${ROLES[role].team} r-${role} s-${st}`+(st!=='alive'?' out':'');
+        const s=V.seats[i]||{},role=ROLES[s.role]?s.role:'',st=s.status||'alive';
+        t.className=`tile team-${role?ROLES[role].team:'norole'} r-${role||'none'} s-${st}`+(st!=='alive'?' out':'');
         // фото ещё в пути (s.hp): оставляем прежнее, с его приходом draw повторится
         const pic=photo(s.ph||s.pid);if(pic||!s.hp)paint(t.querySelector('.ph'),pic);
         const bd=t.querySelector('.badge'),was=bd._r;
@@ -487,7 +488,7 @@ if(MODE!=='panel'){
           bd._r=role;bd.innerHTML=BADGE[role]||'';
           // при выдаче активной роли её название ненадолго выезжает рядом со значком; при загрузке страницы не срабатывает
           const rp=t.querySelector('.rp');clearTimeout(rp._t);rp.classList.remove('on');
-          if(was&&BADGE[role]){rp.firstChild.textContent=ROLES[role].t;rp.classList.add('on');rp._t=setTimeout(()=>rp.classList.remove('on'),ROLE_PLATE_MS)}
+          if(was!==undefined&&BADGE[role]){rp.firstChild.textContent=ROLES[role].t;rp.classList.add('on');rp._t=setTimeout(()=>rp.classList.remove('on'),ROLE_PLATE_MS)}
         }
         t.querySelector('.nick span').textContent=s.nick||'—';
         t.querySelector('.st').innerHTML=st==='killed'?IC.cross+'<span>УБИТ</span>':st==='voted'?IC.hand+'<span>ЗАГОЛОСОВАН</span>':st==='removed'?IC.card+'<span>УДАЛЁН</span>':'';
@@ -641,7 +642,7 @@ if(MODE==='panel'){
     const tr=document.createElement('tr');tr.dataset.i=i;
     tr.innerHTML=`<td class="n">${i+1}</td><td><div class="mini"></div></td>
       <td><select class="who" data-f="pid" aria-label="Игрок на месте ${i+1}"></select></td>
-      <td class="rc"><select data-f="role" aria-label="Роль, место ${i+1}"><option value="civ">Мирный</option><option value="sheriff">Шериф</option><option value="mafia">Мафия</option><option value="don">Дон</option></select></td>
+      <td class="rc"><select data-f="role" aria-label="Роль, место ${i+1}"><option value="">Нет роли</option><option value="civ">Мирный</option><option value="sheriff">Шериф</option><option value="mafia">Мафия</option><option value="don">Дон</option></select></td>
       <td class="stc"><select data-f="status" aria-label="Статус, место ${i+1}"><option value="alive">В игре</option><option value="voted">Заголосован</option><option value="removed">Удалён</option></select><span class="killed"></span></td>
       <td class="fo"><button data-a="foulMinus" data-i="${i}" aria-label="Снять фол, место ${i+1}">−</button><span class="fn"></span><button data-a="foulPlus" data-i="${i}" aria-label="Фол, место ${i+1}">+</button></td>`;
     tb.appendChild(tr);
@@ -673,7 +674,7 @@ if(MODE==='panel'){
     addNight(){S.nights.push({shot:'',check:'',don:''})},
     delNight(el){S.nights.splice(+el.dataset.k,1);if(!S.nights.length)S.nights.push({shot:'',check:'',don:''})},
     newGame(){if(!confirm('Начать новую игру? Роли, статусы, фолы и ночи сбросятся, рассадка останется.'))return;
-      S.seats.forEach(s=>{s.role='civ';s.status='alive';s.fouls=0});S.nights=[{shot:'',check:'',don:''}];S.game=(+S.game||0)+1},
+      S.seats.forEach(s=>{s.role='';s.status='alive';s.fouls=0});S.nights=[{shot:'',check:'',don:''}];S.game=(+S.game||0)+1},
     gamePlus(){S.game=(+S.game||0)+1},
     gameMinus(){S.game=Math.max(0,(+S.game||0)-1)},
     foulPlus(el){const s=S.seats[+el.dataset.i];s.fouls=Math.min(4,(+s.fouls||0)+1)},
@@ -757,7 +758,7 @@ if(MODE==='panel'){
       const who=tr.querySelector('[data-f=pid]');
       if(document.activeElement!==who){if(who._o!==opts){who.innerHTML=opts;who._o=opts}who.value=s.pid}
       setVal(tr.querySelector('[data-f=role]'),s.role);
-      tr.querySelector('.rc').className='rc rc-'+(s.role==='sheriff'?'gold':s.role==='don'?'don':ROLES[s.role].team);
+      tr.querySelector('.rc').className='rc rc-'+(s.role==='sheriff'?'gold':s.role==='don'?'don':s.role?ROLES[s.role].team:'none');
       const sel=tr.querySelector('[data-f=status]'),kl=tr.querySelector('.killed'),fo=+s.fouls||0,fn=tr.querySelector('.fn');
       if(st==='killed'){sel.style.display='none';kl.textContent=`Убит (ночь ${shotNight(i)+1})`}
       else if(fo>=4){sel.style.display='none';kl.textContent='Удалён (4 фола)'}
@@ -828,7 +829,7 @@ if(MODE==='panel'){
       return k;
     }
     const J={
-      role(c){if(ROLES[c.v])S.seats[c.i].role=c.v},
+      role(c){if(c.v===''||ROLES[c.v])S.seats[c.i].role=c.v},
       foul(c){const s=S.seats[c.i];s.fouls=Math.min(4,Math.max(0,(+s.fouls||0)+(c.d>0?1:-1)))},
       status(c){if(['alive','voted','removed'].includes(c.v)){const s=S.seats[c.i];s.status=c.v;if(c.v==='alive'&&(+s.fouls||0)>=4)s.fouls=3}},
       shot(c){

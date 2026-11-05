@@ -21,6 +21,7 @@ h2:first-child{margin-top:4px}
 .seat.out .num{opacity:.55}
 .seat.out .nick{color:#77757d;text-decoration:line-through}
 .num{width:30px;height:30px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:4px;background:var(--red);color:#fff;font-weight:700}
+.num.none{background:#3a3a42}
 .num.mafia{background:#000;box-shadow:inset 0 0 0 2px rgba(255,255,255,.4)}
 .num.sheriff{background:var(--brass);color:var(--brass-ink)}
 .num.don{background:var(--don)}
@@ -65,7 +66,7 @@ function row(key,i,s,out,fill,extra=[]){
   const head=document.createElement('button');
   head.type='button';head.className='row';head.setAttribute('aria-expanded',isOpen);
   head.onclick=()=>{open=isOpen?null:key;draw()};
-  const num=document.createElement('span');num.className='num '+s.role;num.textContent=i+1;
+  const num=document.createElement('span');num.className='num '+(s.role||'none');num.textContent=i+1;
   const nick=document.createElement('span');nick.className='nick';nick.textContent=s.nick||'— свободно —';
   head.append(num,nick);
   const line=document.createElement('div');line.className='line';line.append(head,...extra);card.append(line);
@@ -75,7 +76,7 @@ function row(key,i,s,out,fill,extra=[]){
 function heading(text){const h=document.createElement('h2');h.textContent=text;return h}
 function roleControls(more,s,i){
   const close=()=>{open=null;draw()},seg=document.createElement('div');seg.className='seg';
-  ROLES.forEach(([r,t])=>seg.append(btn(t,s.role===r,{a:'role',i,v:r},close)));
+  ROLES.forEach(([r,t])=>seg.append(btn(t,s.role===r,{a:'role',i,v:s.role===r?'':r},close)));
   more.append(seg);
 }
 function gameControls(more,s,i){

@@ -79,6 +79,27 @@ test('команды судьи меняют игру в пульте', { skip }
   assert.equal(lastState(judge).seats.length, 10);
 });
 
+test('роль можно не выдавать и снять', { skip }, async t => {
+  const server = await startServer(t);
+  const state = gameState({ url: server.http, room: room('a'), hud: room('f'), key: '' });
+  state.seats.forEach(seat => { seat.role = ''; });
+  const judge = await connect(t, server.url(room('a'), 'judge'));
+  openPanel(t, state, { photos: { p0: PHOTO, 'p0.mafia': PHOTO + 'AA' } });
+  assert.ok(await until(() => judge.got.some(m => m.includes('"panel":1')), 20000), 'пульт не подключился');
+
+  const screen = await joinWhenReady(t, server.url(room('f'), 'screen'));
+  const view = () => screen.texts().map(text => JSON.parse(text)).filter(m => m.kind === 'view').at(-1)?.view;
+  screen.ws.send(JSON.stringify({ app: 'mafiahud', from: 'test', kind: 'hello', mode: 'overlay' }));
+  assert.ok(await until(() => view()));
+  assert.equal(view().seats[0].role, '');
+  assert.equal(view().seats[0].ph, 'p0', 'без роли показывается обычное фото');
+
+  judge.ws.send('{"kind":"cmd","a":"role","i":0,"v":"mafia"}');
+  assert.ok(await until(() => view().seats[0].ph === 'p0.mafia'), 'с ролью показывается фото роли');
+  judge.ws.send('{"kind":"cmd","a":"role","i":0,"v":""}');
+  assert.ok(await until(() => view().seats[0].role === '' && view().seats[0].ph === 'p0'), 'роль не снялась');
+});
+
 test('пульт сообщает о неверном пароле и не повторяет попытки', { skip }, async t => {
   const server = await startServer(t, SECRET);
   const beacon = await statusBeacon(t);
