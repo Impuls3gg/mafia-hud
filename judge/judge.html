@@ -31,8 +31,10 @@ h2:first-child{margin-top:4px}
 .night h3{margin-bottom:6px;font-size:15px;font-weight:600}
 .act{display:grid;grid-template-columns:60px minmax(0,1fr) 62px;align-items:center;gap:6px;margin-top:4px}
 .act span{font-size:14px;color:#a09d95}
-.act select{min-width:0;min-height:44px;padding:0 6px;font:inherit;color:inherit;background:#26262d;border:1px solid #34343c;border-radius:6px}
-.act select:disabled{opacity:.45}
+select{width:100%;min-width:0;min-height:44px;padding:0 6px;font:inherit;color:inherit;background:#26262d;border:1px solid #34343c;border-radius:6px}
+select:disabled{opacity:.45}
+.voted{display:flex;align-items:center;gap:10px;margin-top:6px}
+.voted button{flex:none;padding:0 12px}
 .act b{font-size:13px;font-weight:600;text-align:right}
 .act b.black{color:#fff}.act b.red{color:#ff7a8a}.act b.don{color:var(--don)}.act b.sheriff{color:var(--brass)}
 .state{margin-bottom:6px;font-size:13px;color:var(--hot)}
@@ -68,15 +70,18 @@ function btn(text,on,cmd,after){
   b.onclick=()=>{send(cmd);if(after)after()};
   return b;
 }
+function seatLabel(i,s){
+  const num=document.createElement('span');num.className='num '+(s.role||'none');num.textContent=i+1;
+  const nick=document.createElement('span');nick.className='nick';nick.textContent=s.nick||'— свободно —';
+  return [num,nick];
+}
 function row(key,i,s,out,fill,extra=[]){
   const isOpen=open===key,card=document.createElement('section');
   card.className='seat'+(isOpen?' open':'')+(out?' out':'');
   const head=document.createElement('button');
   head.type='button';head.className='row';head.setAttribute('aria-expanded',isOpen);
   head.onclick=()=>{open=isOpen?null:key;draw()};
-  const num=document.createElement('span');num.className='num '+(s.role||'none');num.textContent=i+1;
-  const nick=document.createElement('span');nick.className='nick';nick.textContent=s.nick||'— свободно —';
-  head.append(num,nick);
+  head.append(...seatLabel(i,s));
   const line=document.createElement('div');line.className='line';line.append(head,...extra);card.append(line);
   if(isOpen){const more=document.createElement('div');more.className='more';fill(more);card.append(more)}
   return card;
@@ -135,6 +140,21 @@ function nightBlock(n,k){
     nightAction(k,'don','Дон',n.don,donResult(last.seats[n.don])));
   return box;
 }
+function voteBlock(){
+  const box=document.createElement('section');box.className='night';
+  const sel=document.createElement('select');sel.disabled=!panelOn;sel.setAttribute('aria-label','Заголосовать игрока');
+  sel.add(new Option('Выберите, кого заголосовали',''));
+  last.seats.forEach((s,i)=>{if(s.st==='alive')sel.add(new Option((i+1)+' '+(s.nick||'— свободно —'),String(i)))});
+  sel.onchange=()=>send({a:'status',i:+sel.value,v:'voted'});
+  box.append(sel);
+  last.seats.forEach((s,i)=>{
+    if(s.st!=='voted')return;
+    const line=document.createElement('div');line.className='voted';
+    line.append(...seatLabel(i,s),btn('Вернуть',false,{a:'status',i,v:'alive'}));
+    box.append(line);
+  });
+  return box;
+}
 function draw(){
   const box=$('seats');box.textContent='';
   if(!last)return;
@@ -144,6 +164,7 @@ function draw(){
   last.seats.forEach((s,i)=>box.append(row('role'+i,i,s,false,more=>roleControls(more,s,i))));
   box.append(heading('Фолы и статусы'));
   last.seats.forEach((s,i)=>box.append(row('game'+i,i,s,s.st!=='alive',more=>gameControls(more,s,i),foulCount(s,i))));
+  box.append(heading('Голосование'),voteBlock());
   box.append(heading('Ночные действия'));
   (last.nights||[]).forEach((n,k)=>box.append(nightBlock(n,k)));
 }
