@@ -15,7 +15,7 @@ test('скрипты страниц без синтаксических ошиб
   const pages = ['mafia-hud.html', 'win-civilians.html', 'win-mafia.html', 'judge/judge.html'];
   for (const page of pages) {
     const html = fs.readFileSync(path.join(ROOT, page), 'utf8');
-    const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)];
+    const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)];
     assert.ok(scripts.length, page);
     scripts.forEach(([, code]) => new vm.Script(code, { filename: page }));
   }

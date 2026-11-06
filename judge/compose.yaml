@@ -10,6 +10,8 @@ services:
       JUDGE_SECRET: ${JUDGE_SECRET:-}
     ports:
       - "${JUDGE_PUBLISH:-127.0.0.1:8787}:8787"
+    volumes:
+      - judge_data:/data
 
   caddy:
     image: caddy:2-alpine
@@ -30,5 +32,6 @@ services:
       - caddy_config:/config
 
 volumes:
+  judge_data:
   caddy_data:
   caddy_config:

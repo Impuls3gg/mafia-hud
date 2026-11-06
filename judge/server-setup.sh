@@ -59,7 +59,7 @@ echo "Пароль сервера для пульта: $secret"
 echo "Проверяю адрес $url ..."
 for _ in {1..30}; do
   if curl -fsS --noproxy '*' -o /dev/null --max-time 5 "$url/" 2>/dev/null; then
-    echo "Готово. Вставьте в пульт адрес $url и пароль сервера."
+    echo "Готово. Откройте пульт $url/panel и войдите с паролем сервера."
     exit 0
   fi
   sleep 2

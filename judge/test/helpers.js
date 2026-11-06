@@ -19,11 +19,19 @@ function freePort() {
   });
 }
 
-async function startServer(t, secret) {
-  const port = await freePort();
-  const env = { ...process.env, PORT: port, JUDGE_SECRET: secret || '' };
+// Игра хранится в data. Тест, который перезапускает сервер, передаёт одну папку обоим запускам.
+async function startServer(t, secret, data, fixedPort) {
+  const port = fixedPort || await freePort();
+  const owned = !data;
+  const dir = data || fs.mkdtempSync(path.join(os.tmpdir(), 'mafia-hud-data-'));
+  const env = { ...process.env, PORT: port, JUDGE_SECRET: secret || '', DATA_DIR: dir };
   const child = spawn(process.execPath, [path.join(ROOT, 'judge', 'server.js')], { env, stdio: 'ignore' });
-  t.after(() => child.kill());
+  const stopped = new Promise(resolve => child.once('exit', resolve));
+  t.after(async () => {
+    child.kill();
+    await stopped;
+    if (owned) fs.rmSync(dir, { recursive: true, force: true });
+  });
   for (let i = 0; i < 50; i++) {
     const open = await new Promise(resolve => {
       const sock = net.connect(port, 'localhost', () => { sock.destroy(); resolve(true); });
@@ -34,6 +42,8 @@ async function startServer(t, secret) {
   }
   return {
     port,
+    data: dir,
+    stop: () => { child.kill(); return stopped; },
     http: `http://localhost:${port}`,
     url: (id, role, key) => `ws://localhost:${port}/ws?room=${id}&role=${role}` + (key === undefined ? '' : `&key=${encodeURIComponent(key)}`)
   };
@@ -113,7 +123,7 @@ function findChrome() {
 }
 
 // Открывает настоящий пульт в Chrome без окна. OBS подменён, поэтому тест не трогает запущенный OBS.
-function openPanel(t, state, { photos = {}, beacon } = {}) {
+function openPanel(t, state, { photos = {}, beacon, debugPort = 0 } = {}) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mafia-hud-test-'));
   const seed = [
     "const W=WebSocket;window.WebSocket=function(u){if(u.includes(':4455'))throw new Error('no obs');return new W(u)};",
@@ -124,13 +134,52 @@ function openPanel(t, state, { photos = {}, beacon } = {}) {
   const page = fs.readFileSync(path.join(ROOT, 'mafia-hud.html'), 'utf8').replace('<body>', () => `<body><script>${seed}</script>`);
   const file = path.join(dir, 'panel.html');
   fs.writeFileSync(file, page);
-  const chrome = spawn(findChrome(), ['--headless=new', '--disable-gpu', '--no-sandbox', `--user-data-dir=${path.join(dir, 'profile')}`, '--remote-debugging-port=0', `file:///${file.replace(/\\/g, '/').replace(/^\//, '')}#panel`], { stdio: 'ignore' });
-  t.after(async () => {
-    killTree(chrome);
-    await sleep(300); // Windows отпускает файлы профиля не сразу
-    fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
-  });
+  const chrome = spawn(findChrome(), ['--headless=new', '--disable-gpu', '--no-sandbox', `--user-data-dir=${path.join(dir, 'profile')}`, `--remote-debugging-port=${debugPort}`, `file:///${file.replace(/\\/g, '/').replace(/^\//, '')}#panel`], { stdio: 'ignore' });
+  t.after(() => closeChrome(chrome, dir));
   return chrome;
+}
+
+async function closeChrome(chrome, dir) {
+  killTree(chrome);
+  await sleep(300); // Windows отпускает файлы профиля не сразу
+  fs.rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
+}
+
+// Открывает страницу в Chrome и возвращает управление ею: page.run выполняет код на странице, page.close закрывает браузер.
+async function openPage(t, url) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mafia-hud-test-'));
+  const port = await freePort();
+  const chrome = spawn(findChrome(), ['--headless=new', '--disable-gpu', '--no-sandbox', `--user-data-dir=${path.join(dir, 'profile')}`, `--remote-debugging-port=${port}`, url], { stdio: 'ignore' });
+  let closed = false;
+  const close = async () => { if (!closed) { closed = true; await closeChrome(chrome, dir); } };
+  t.after(close);
+  return { ...await devtools(port), close };
+}
+
+// Подключается к открытой вкладке Chrome по его отладочному протоколу.
+async function devtools(port) {
+  const tab = await until(async () => {
+    const list = await fetch(`http://localhost:${port}/json`).then(res => res.json()).catch(() => []);
+    return list.find(item => item.type === 'page');
+  }, 20000);
+  const socket = new WebSocket(tab.webSocketDebuggerUrl);
+  await new Promise(resolve => { socket.onopen = resolve; });
+  let id = 0;
+  const waiting = new Map();
+  socket.onmessage = e => {
+    const reply = JSON.parse(e.data);
+    waiting.get(reply.id)?.(reply);
+    waiting.delete(reply.id);
+  };
+  const run = expression => new Promise((resolve, reject) => {
+    waiting.set(++id, reply => {
+      const details = reply.result?.exceptionDetails;
+      if (details) reject(new Error(details.exception?.description || details.text));
+      else resolve(reply.result?.result?.value);
+    });
+    socket.send(JSON.stringify({ id, method: 'Runtime.evaluate', params: { expression, returnByValue: true, awaitPromise: true } }));
+  });
+  return { run };
 }
 
 // Chrome запускает дочерние процессы, и на Windows их нужно закрывать вместе с основным.
@@ -139,4 +188,4 @@ function killTree(child) {
   else child.kill();
 }
 
-module.exports = { ROOT, sleep, room, startServer, connect, until, maskedFrame, rawClient, findChrome, openPanel };
+module.exports = { ROOT, sleep, room, freePort, startServer, connect, until, maskedFrame, rawClient, findChrome, openPanel, openPage, devtools };

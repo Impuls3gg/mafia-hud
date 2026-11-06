@@ -10,7 +10,7 @@ secret=test-secret
 failed=0
 
 mkdir "$work/judge"
-cp "$judge/server.js" "$judge/judge.html" "$judge/Dockerfile" "$judge/compose.yaml" "$judge/Caddyfile" "$work/judge/"
+cp "$judge/server.js" "$judge/game.js" "$judge/judge.html" "$judge/Dockerfile" "$judge/compose.yaml" "$judge/Caddyfile" "$work/judge/"
 cp "$judge/../mafia-hud.html" "$judge/../win-civilians.html" "$judge/../win-mafia.html" "$judge/../.dockerignore" "$work/"
 cd "$work/judge" || exit 1
 
@@ -50,11 +50,27 @@ const result=ws=>new Promise(done=>{ws.onclose=e=>done(e.code);ws.onopen=()=>set
 }
 want='4401 4403 open open open big cmd'
 
+# Меняет название игры через пульт на сервере или, без аргумента, читает его.
+game_title() {
+  docker run --rm --network host node:24-alpine node --no-warnings -e "
+const ws=new WebSocket('ws://localhost/ws?role=host&key=$secret');
+ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.kind!=='game')return;
+  if('$1'&&m.hello){ws.send(JSON.stringify({kind:'patch',seq:1,ops:[[['title'],'$1']]}));return}
+  console.log(m.S.title);process.exit(0)};
+setTimeout(()=>{console.log('timeout');process.exit(1)},5000);
+" 2>/dev/null | tail -1
+}
+
 printf 'JUDGE_SECRET=%s\nJUDGE_PUBLISH=80\n' "$secret" > .env
 start
 for page in / /hud /win-civilians /win-mafia; do expect "по IP: страница $page" "$(status "http://localhost$page")" 200; done
 expect 'по IP: файлы сервера закрыты' "$(status http://localhost/server.js)" 404
 expect 'по IP: связь и пароль' "$(websocket ws://localhost)" "$want"
+expect 'по IP: страница пульта' "$(status http://localhost/panel)" 200
+expect 'игра сохраняется' "$(game_title Финал)" Финал
+docker compose -p "$project" up -d --force-recreate >/dev/null 2>&1
+sleep 4
+expect 'игра переживает пересоздание контейнера' "$(game_title '')" Финал
 
 printf 'JUDGE_SECRET=%s\nDOMAIN=localhost\nCOMPOSE_PROFILES=https\n' "$secret" > .env
 start
