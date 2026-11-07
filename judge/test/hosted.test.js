@@ -127,6 +127,21 @@ test('правки пульта и судьи не затирают друг д�
   assert.ok((await connect(t, server.url(room2, 'judge'))).ws);
 });
 
+test('пульт переключает худ между игрой и экранами победы', async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms, send } = await openGame(t, server);
+  const screen = await joinScreen(t, server, rooms);
+  assert.equal(view(screen).scene, 'game', 'новая игра начинается со сцены игры');
+
+  send({ kind: 'patch', seq: 1, ops: [[['scene'], 'red']] });
+  assert.ok(await until(() => view(screen).scene === 'red'), 'худ не переключился на red');
+  send({ kind: 'patch', seq: 2, ops: [[['scene'], 'black']] });
+  assert.ok(await until(() => view(screen).scene === 'black'), 'худ не переключился на black');
+  // неизвестная сцена не ломает худ: он остаётся на игре
+  send({ kind: 'patch', seq: 3, ops: [[['scene'], 'oops']] });
+  assert.ok(await until(() => view(screen).scene === 'game'), 'худ не переключился на game');
+});
+
 test('неверные сообщения не ломают сервер и игру', async t => {
   const server = await startServer(t, SECRET);
   const { host, rooms, send } = await openGame(t, server);

@@ -96,6 +96,34 @@ body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;f
 .tile .fc.f3{background:#ff8c1a}
 .tile .fc.f4{background:#c8102e;color:#fff}
 
+/* сцены единого худа: игра, победа мирных, победа мафии */
+.dim{position:absolute;inset:0;background:rgba(8,8,10,.72);opacity:0;pointer-events:none}
+#stage.sc-win .dim{opacity:1}
+#stage.moving .dim{transition:opacity .7s ease}
+#stage.moving .info{transition:transform .9s cubic-bezier(.65,0,.35,1)}
+/* ночные действия улетают влево вверх и возвращаются обратно */
+#stage.moving .nights{transition:transform .8s cubic-bezier(.2,.8,.3,1),opacity .6s ease .1s}
+#stage.moving.sc-win .nights{transition:transform .6s cubic-bezier(.6,0,.9,.4),opacity .45s ease .15s}
+#stage.sc-win .nights{opacity:0}
+.wb{position:absolute;left:50%;top:0;transform:translateX(-50%);pointer-events:none}
+.wb .win{margin:0;clip-path:inset(0 50% 0 50%);opacity:0}
+.wb .win span{display:block;opacity:0;transform:translateY(24px)}
+#stage.sc-win .wb .win{clip-path:inset(0);opacity:1}
+#stage.sc-win .wb .win span{opacity:1;transform:none}
+#stage.moving .wb .win{transition:clip-path .35s cubic-bezier(.6,0,.9,.4),opacity .2s ease .15s}
+#stage.moving .wb .win span{transition:opacity .2s ease,transform .2s ease}
+#stage.moving.sc-win .wb .win{transition:clip-path .7s cubic-bezier(.2,.8,.2,1) .45s,opacity .01s linear .45s}
+#stage.moving.sc-win .wb .win span{transition:opacity .5s ease .9s,transform .6s cubic-bezier(.2,.8,.2,1) .9s}
+#stage.sc-win .wb.flip .win{clip-path:inset(0 50% 0 50%)}
+#stage.sc-win .wb.flip .win span{opacity:0}
+#stage.moving.sc-win .wb.flip .win{transition:clip-path .3s cubic-bezier(.6,0,.9,.4)}
+#stage.moving.sc-win .wb.flip .win span{transition:opacity .15s ease}
+/* экран победы: проигравшие исчезают, победители съезжаются в середину ряда (сдвиг задаёт placeScene) */
+.tile.loser{opacity:0;transform:translateY(40px) scale(.92)}
+#stage.moving .tile{transition:transform .8s cubic-bezier(.65,0,.35,1),opacity .5s ease .5s}
+#stage.moving.sc-win .tile{transition:transform .9s cubic-bezier(.65,0,.35,1) .35s,opacity .4s ease}
+#stage.moving.sc-win .tile.loser{transition:transform .5s cubic-bezier(.6,0,.9,.4),opacity .4s ease}
+
 /* ================= PANEL ================= */
 body.panel{background:#121216;color:#e9e7e2;font-family:var(--f-ui);font-size:13px;color-scheme:dark;min-height:100%}
 .panel button,.panel input,.panel select{font:inherit;color:inherit}
@@ -103,6 +131,7 @@ body.panel{background:#121216;color:#e9e7e2;font-family:var(--f-ui);font-size:13
 .panel button:hover{background:#2f2f38}
 .panel button:focus-visible,.panel input:focus-visible,.panel select:focus-visible,.panel label.thumb:focus-within{outline:2px solid #7aa7ff;outline-offset:1px}
 .panel button.warn{background:#3a2020;border-color:#5a2a2a}
+.panel button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 .panel input,.panel select{background:#1b1b21;border:1px solid #34343c;padding:5px 7px;border-radius:4px;min-width:0}
 .p-head{padding:10px 14px;border-bottom:1px solid #26262d;position:sticky;top:0;background:#121216;z-index:2}
 .p-head h1{font-family:var(--f-display);font-size:20px;font-weight:600}
@@ -241,13 +270,14 @@ body.hosted .local-only{display:none}
 const ROLES={civ:{t:'Мирный',team:'red'},sheriff:{t:'Шериф',team:'red'},mafia:{t:'Мафия',team:'black'},don:{t:'Дон',team:'black'}};
 const UI_DEF={th:236,ts:1,gap:12,mb:30,side:40,ns:1,is:1};
 const ACCENT_DEF='#c41e3a';
+const SCENES=['game','red','black']; // что показывает худ: игру или победу команды
 const okColor=c=>/^#[0-9a-f]{6}$/i.test(c||'');
 const newId=()=>'p'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
 const emptySeat=pid=>({pid:pid||'',role:'',status:'alive',fouls:0});
 const roleKeys=id=>Object.keys(ROLES).map(r=>id+'.'+r); // ключи фото игрока для каждой роли
 function defaultState(){
   const roster=Array.from({length:10},(_,i)=>({id:newId()+i,nick:'Игрок '+(i+1)}));
-  return {v:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,photoVer:0,showFouls:true,judge:{url:'',room:'',hud:'',key:''},wait:{show:false,running:false,endAt:0,left:600000,total:600000}};
+  return {v:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,photoVer:0,showFouls:true,scene:'game',judge:{url:'',room:'',hud:'',key:''},wait:{show:false,running:false,endAt:0,left:600000,total:600000}};
 }
 function normalState(s){const o=Object.assign(defaultState(),s);o.ui=Object.assign({},UI_DEF,s.ui);return o}
 function waitLeft(){const w=S.wait;return w.running?Math.max(0,w.endAt-Date.now()):Math.max(0,w.left)}
@@ -262,6 +292,7 @@ function buildView(){
     seats:S.seats.map((s,i)=>({pid:s.pid||'',ph:photoKey(s)||'',hp:!!photos[photoKey(s)],nick:seatNick(i),role:s.role,status:statusOf(i),fouls:+s.fouls||0})),showFouls:S.showFouls!==false,
     nights:S.nights.map(n=>({shot:n.shot||'',check:n.check||'',don:n.don||''})),
     ui:Object.assign({},UI_DEF,S.ui),accent:okColor(S.accent)?S.accent:ACCENT_DEF,
+    scene:SCENES.includes(S.scene)?S.scene:'game',
     wait:{show:!!S.wait.show,running:!!S.wait.running,remain:waitLeft(),sentAt:Date.now()}};
 }
 function seatedPhotos(){return new Set(S.seats.flatMap(s=>[s.pid,photoKey(s)]).filter(Boolean))} // экранам победы нужно обычное фото, худу — фото роли
@@ -471,9 +502,36 @@ if(MODE!=='panel'){
   if(MODE==='overlay'){
     document.body.className='overlay';
     document.body.innerHTML=`<div id="stage">
+      <div class="dim"></div>
       <div class="info"><div class="in"><div class="t"></div><div class="g"></div></div></div>
-      <div class="nights"></div><div class="row"></div></div>`;
+      <div class="nights"></div><div class="row"></div>
+      <div class="wb"><div class="win red"><span></span></div></div></div>`;
     const stage=document.getElementById('stage'),q=s=>stage.querySelector(s),row=q('.row');
+    let scene=null,moveT=null,flipT=null;
+    const banner=sc=>{const w=q('.wb .win');w.className='win '+sc;w.firstChild.textContent=sc==='red'?'ПОБЕДА МИРНЫХ':'ПОБЕДА МАФИИ'};
+    // переходы включаются только на время смены сцены, чтобы ползунки размеров в пульте работали без задержки
+    function setScene(sc){
+      if(sc===scene)return;
+      const first=scene===null,was=scene;scene=sc;
+      const win=sc!=='game',wb=q('.wb');
+      clearTimeout(moveT);clearTimeout(flipT);wb.classList.remove('flip');
+      if(!first){stage.classList.add('moving');moveT=setTimeout(()=>stage.classList.remove('moving'),2200)}
+      // с одной победы на другую: надпись схлопывается и раскрывается уже в цвете другой команды
+      if(win&&!first&&was!=='game'){wb.classList.add('flip');flipT=setTimeout(()=>{banner(sc);wb.classList.remove('flip')},350)}
+      else if(win)banner(sc);
+      stage.classList.toggle('sc-win',win);
+    }
+    // название турнира: в игре в правом верхнем углу, на экране победы над надписью по центру
+    function placeScene(u){
+      const info=q('.info'),nb=q('.nights'),wb=q('.wb'),win=scene!=='game';
+      const iw=info.offsetWidth,ih=info.offsetHeight,bh=q('.wb .win').offsetHeight;
+      const k=Math.max(1.3,u.is*1.3),gap=40,titleH=info.style.display==='none'?0:ih*k+gap;
+      const room=1080-u.mb-u.th-30,top=Math.max(30,(room-titleH-bh)/2);
+      wb.style.top=(top+titleH)+'px';
+      // точка привязки .info — правый верхний угол (right:40px, top:36px)
+      info.style.transform=win?`translate(${960+iw*k/2-1880}px,${top-36}px) scale(${k})`:(u.is===1?'':`scale(${u.is})`);
+      nb.style.transform=win?`translate(-130%,-60px) rotate(-12deg) scale(${u.ns})`:(u.ns===1?'':`scale(${u.ns})`);
+    }
     const tiles=Array.from({length:10},(_,i)=>{
       const t=document.createElement('div');
       t.innerHTML=`<div class="body"><div class="ph"></div><div class="accent"></div><div class="badge"></div><div class="rp"><span></span></div>
@@ -521,15 +579,19 @@ if(MODE!=='panel'){
       const u=Object.assign({},UI_DEF,V.ui||{});
       stage.style.setProperty('--th',u.th+'px');stage.style.setProperty('--ts',u.ts);
       stage.style.setProperty('--gap',u.gap+'px');stage.style.setProperty('--mb',u.mb+'px');stage.style.setProperty('--side',u.side+'px');
-      q('.nights').style.transform=u.ns===1?'':`scale(${u.ns})`;
-      q('.info').style.transform=u.is===1?'':`scale(${u.is})`;
       q('.info .t').textContent=V.title||'';
       q('.info .g').textContent=V.game?'Игра '+V.game:'';
       q('.info .g').style.display=V.game?'block':'none';
       q('.info').style.display=(V.title||V.game)?'flex':'none';
+      const sc=SCENES.includes(V.scene)?V.scene:'game';
+      setScene(sc);placeScene(u);
       tiles.forEach((t,i)=>{
         const s=V.seats[i]||{},role=ROLES[s.role]?s.role:'',st=s.status||'alive';
-        t.className=`tile team-${role?ROLES[role].team:'norole'} r-${role||'none'} s-${st}`+(st!=='alive'?' out':'');
+        // на экране победы игрок без роли считается мирным, как и в проверках; пустые места исчезают вместе с проигравшими
+        const res=sc==='game'?'':s.pid&&ROLES[role||'civ'].team===sc?' winner':' loser';
+        // победители показываются целиком, даже если их убили или заголосовали
+        const out=st!=='alive'&&res!==' winner';
+        t.className=`tile team-${role?ROLES[role].team:'norole'} r-${role||'none'} s-${out?st:'alive'}`+(out?' out':'')+res;
         // фото ещё в пути (s.hp): оставляем прежнее, с его приходом draw повторится
         const pic=photo(s.ph||s.pid);if(pic||!s.hp)paint(t.querySelector('.ph'),pic);
         const bd=t.querySelector('.badge'),was=bd._r;
@@ -541,10 +603,14 @@ if(MODE!=='panel'){
         }
         t.querySelector('.nick span').textContent=s.nick||'—';
         t.querySelector('.st').innerHTML=st==='killed'?IC.cross+'<span>УБИТ</span>':st==='voted'?IC.hand+'<span>ЗАГОЛОСОВАН</span>':st==='removed'?IC.card+'<span>УДАЛЁН</span>':'';
-        // фолы видны у игроков в игре и у удалённых, если показ включён в пульте
-        const fo=+s.fouls||0,fc=t.querySelector('.fc'),fon=V.showFouls!==false&&fo>0&&(st==='alive'||st==='removed');
+        // фолы видны у игроков в игре и у удалённых, если показ включён в пульте; на экране победы их нет
+        const fo=+s.fouls||0,fc=t.querySelector('.fc'),fon=sc==='game'&&V.showFouls!==false&&fo>0&&(st==='alive'||st==='removed');
         fc.className='fc'+(fon?' on':'')+(fo>=4?' f4':fo===3?' f3':'');fc.textContent=fon?fo:'';
       });
+      // победители встают подряд по центру ряда; места считаются без сдвигов, поэтому повторный вызов ничего не ломает
+      const wins=tiles.filter(t=>t.classList.contains('winner'));
+      const W=tiles[0].offsetWidth,step=W+u.gap,start=(q('.row').clientWidth-(wins.length*step-u.gap))/2; // q('.row'): ниже в draw есть своя функция row
+      tiles.forEach(t=>{const k=wins.indexOf(t);t.style.transform=k<0?'':`translateX(${start+k*step-t.offsetLeft}px)`});
       const nb=q('.nights'),ns=V.nights||[];
       const has=n=>(n.shot||'')!==''||(n.check||'')!==''||(n.don||'')!=='';
       const shown=ns.slice(0,ns.reduce((last,n,k)=>has(n)?k+1:last,0)); // столбец — ночь, поэтому пустая ночь посреди игры тоже остаётся
@@ -609,6 +675,7 @@ if(MODE!=='panel'){
     };
   }
   draw();
+  if(document.fonts)document.fonts.ready.then(()=>draw()); // ширина названия зависит от шрифта, а по ней худ ставит его в центр
   Net.connect();
   Net.send({kind:'hello',mode:MODE});
 }
@@ -622,6 +689,10 @@ function startPanel(){
   <header class="p-head"><h1>HUD для мафии · пульт</h1></header>
   <div class="p-grid">
     <div>
+      <div class="box"><h2>Экран худа</h2>
+        <div class="bar" id="scenes"><button data-a="scene" data-s="game">Игра</button><button data-a="scene" data-s="red">Победа мирных</button><button data-a="scene" data-s="black">Победа мафии</button></div>
+        <div class="muted" style="margin-top:6px">Худ в OBS переключается с анимацией: название турнира уходит в центр, ночные действия улетают, плашки победителей съезжаются в середину, остальные исчезают.</div>
+      </div>
       <div class="box"><h2>Рассадка на игру</h2>
         <div class="scroll"><table class="pt"><thead><tr><th>№</th><th></th><th>Игрок</th><th>Роль</th><th>Статус</th><th>Фолы</th></tr></thead><tbody id="rows"></tbody></table></div>
         <div class="bar muted" style="margin-top:8px">Выберите игрока на каждое место. Если он уже сидит на другом месте, игроки поменяются местами. Убитым игрок становится автоматически, когда вы указываете его в отстреле.</div>
@@ -658,7 +729,7 @@ function startPanel(){
         <div class="bar local-only" style="margin-top:8px"><button data-a="jMove">Перенести игру на сервер</button><span class="muted">Игроки, роли и фото сохранятся на сервере. После этого судья и худ работают без этого устройства.</span></div>
       </div>
       <div class="box"><h2>Худ в OBS через сервер</h2>
-        <div class="muted"><span class="local-only">Укажите адрес и пароль сервера в блоке выше. </span>Вставьте эти ссылки в URL источников «Браузер» в OBS. Они показывают роли игроков, поэтому не публикуйте их.</div>
+        <div class="muted"><span class="local-only">Укажите адрес и пароль сервера в блоке выше. </span>Вставьте первую ссылку в URL источника «Браузер» в OBS: худ сам показывает и игру, и экраны победы. Две другие ссылки — отдельные экраны победы, если они ещё нужны. Ссылки показывают роли игроков, поэтому не публикуйте их.</div>
         <div class="bar" style="margin-top:8px"><input id="hLink" style="flex:1" readonly aria-label="Ссылка на худ"><button data-a="hCopy">Копировать</button></div>
         <div class="bar" style="margin-top:6px"><input id="rLink" style="flex:1" readonly aria-label="Ссылка на экран победы мирных"><button data-a="rCopy">Копировать</button></div>
         <div class="bar" style="margin-top:6px"><input id="bLink" style="flex:1" readonly aria-label="Ссылка на экран победы мафии"><button data-a="bCopy">Копировать</button></div>
@@ -721,11 +792,12 @@ function startPanel(){
   const A={
     accent(el){S.accent=el.dataset.c},
     accentReset(){S.accent=ACCENT_DEF},
+    scene(el){S.scene=el.dataset.s},
     uiReset(){S.ui=Object.assign({},UI_DEF)},
     addNight(){S.nights.push({shot:'',check:'',don:''})},
     delNight(el){S.nights.splice(+el.dataset.k,1);if(!S.nights.length)S.nights.push({shot:'',check:'',don:''})},
     newGame(){if(!confirm('Начать новую игру? Роли, статусы, фолы и ночи сбросятся, рассадка останется.'))return;
-      S.seats.forEach(s=>{s.role='';s.status='alive';s.fouls=0});S.nights=[{shot:'',check:'',don:''}];S.game=(+S.game||0)+1},
+      S.seats.forEach(s=>{s.role='';s.status='alive';s.fouls=0});S.nights=[{shot:'',check:'',don:''}];S.game=(+S.game||0)+1;S.scene='game'},
     gamePlus(){S.game=(+S.game||0)+1},
     gameMinus(){S.game=Math.max(0,(+S.game||0)-1)},
     foulPlus(el){const s=S.seats[+el.dataset.i];s.fouls=Math.min(4,(+s.fouls||0)+1)},
@@ -814,6 +886,8 @@ function startPanel(){
       else{sel.style.display='';kl.textContent='';setVal(sel,s.status==='voted'||s.status==='removed'?s.status:'alive')}
       fn.textContent=fo;fn.className='fn'+(fo>=4?' f4':fo===3?' f3':'');
     });
+    const scene=SCENES.includes(S.scene)?S.scene:'game';
+    $('#scenes').querySelectorAll('button').forEach(b=>{const on=b.dataset.s===scene;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on)});
     setVal($('#fTitle'),S.title);setVal($('#fGame'),S.game);setVal($('#fAccent'),okColor(S.accent)?S.accent.toLowerCase():ACCENT_DEF);$('#fFouls').checked=S.showFouls!==false;
     UI_FIELDS.forEach(([k,,,,,un])=>{setVal($('#u_'+k),S.ui[k]);$('#o_'+k).textContent=(un==='×'?(+S.ui[k]).toFixed(2):S.ui[k])+(un==='×'?'×':' px')});
 
