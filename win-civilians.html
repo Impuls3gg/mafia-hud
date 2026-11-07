@@ -20,35 +20,27 @@
 body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;font-family:var(--f-display);color:var(--paper)}
 #stage{position:relative;width:1920px;height:1080px}
 
-.info{position:absolute;left:40px;top:36px;display:flex;background:var(--plate);transform-origin:0 0}
+.info{position:absolute;right:40px;top:36px;display:flex;background:var(--plate);transform-origin:100% 0}
 .info::before{content:"";width:6px;background:var(--accent)}
 .info .in{padding:10px 24px 12px}
 .info .t{font-size:36px;font-weight:600;line-height:1.05}
 .info .g{font-size:21px;color:var(--muted);margin-top:4px}
 
 /* ночи: отстрел и проверки шерифа */
-.nights{position:absolute;right:40px;top:36px;background:var(--plate);display:none;transform-origin:100% 0}
-.nights.on{display:block}
-.nights .hd,.nights .nr{display:grid;grid-template-columns:62px repeat(3,64px);column-gap:4px;align-items:center}
-.nights .hd{padding:8px 12px;font-size:15px;color:var(--muted);letter-spacing:.03em;border-bottom:3px solid var(--accent)}
-.nights .hd span{display:flex;flex-direction:column;align-items:center;gap:2px}
-.nights .hd svg{width:22px;height:22px}
-.nights .nr{padding:6px 12px;border-bottom:1px solid rgba(255,255,255,.06);min-height:48px}
-.nights .nr:last-child{border-bottom:0}
-.nights .nn{font-size:18px;color:var(--muted)}
-.nights .cell{display:flex;align-items:center;justify-content:center;gap:8px;font-size:22px}
-.nights .chip{width:36px;height:36px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;background:var(--paper);color:#111}
+.nights{position:absolute;left:40px;top:36px;background:var(--plate);border-left:6px solid var(--accent);padding:10px 12px;display:none;transform-origin:0 0}
+.nights.on{display:grid;row-gap:6px}
+.nights .nr{display:flex;align-items:center;gap:6px}
+.nights .ni{width:36px;height:40px;display:flex;align-items:center;justify-content:center}
+.nights .ni svg{width:28px;height:28px}
+.nights .chip{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;background:var(--paper);color:#111}
 .nights .chip.red{background:var(--red);color:#fff}
 .nights .chip.black{background:#000;color:#fff;box-shadow:inset 0 0 0 2px rgba(255,255,255,.4)}
 .nights .chip.sher{background:var(--brass);color:var(--brass-ink)}
 .nights .chip.don{background:var(--don);color:#fff}
 .nights .chip.nosher{background:#4a4a52;color:#fff}
+.nights .chip.none{background:rgba(255,255,255,.08);color:#77756f;font-weight:400}
 .ic-hat{fill:var(--don)}
 .ic-hat .hb{fill:#16161b}
-.nights .res{font-size:19px;color:var(--muted)}
-.nights .miss{width:40px;height:40px;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.08)}
-.nights .miss svg{width:26px;height:26px;fill:none;stroke:var(--paper);stroke-width:2.6;stroke-linecap:round}
-.nights .none{color:#5c5a55;font-size:22px}
 .ic-shot{fill:none;stroke:var(--hot);stroke-width:2;stroke-linecap:round}
 .ic-star{fill:var(--brass)}
 
@@ -555,18 +547,14 @@ if(MODE!=='panel'){
       });
       const nb=q('.nights'),ns=V.nights||[];
       const has=n=>(n.shot||'')!==''||(n.check||'')!==''||(n.don||'')!=='';
-      const used=ns.filter(has);
-      nb.classList.toggle('on',used.length>0);
-      if(!used.length){nb.innerHTML='';return}
-      nb.innerHTML=`<div class="hd"><span></span><span>${IC.shot}Отстрел</span><span>${IC.star}Шериф</span><span>${IC.hat}Дон</span></div>`+
-        ns.map((n,k)=>{
-          if(!has(n))return '';
-          const dash='<span class="none">—</span>',sh=n.shot||'',c=n.check||'',d=n.don||'';
-          const shot=sh===''||sh==='miss'?dash:`<span class="chip ${vColor(+sh)}">${+sh+1}</span>`;
-          const chk=c===''?dash:`<span class="chip ${(V.seats[+c]||{}).role==='don'?'don':vTeam(+c)}">${+c+1}</span>`;
-          const don=d===''?dash:`<span class="chip ${(V.seats[+d]||{}).role==='sheriff'?'sher':'nosher'}">${+d+1}</span>`;
-          return `<div class="nr"><span class="nn">Ночь ${k+1}</span><span class="cell">${shot}</span><span class="cell">${chk}</span><span class="cell">${don}</span></div>`;
-        }).join('');
+      const shown=ns.slice(0,ns.reduce((last,n,k)=>has(n)?k+1:last,0)); // столбец — ночь, поэтому пустая ночь посреди игры тоже остаётся
+      nb.classList.toggle('on',shown.length>0);
+      if(!shown.length){nb.innerHTML='';return}
+      const chip=(seat,color)=>seat===''||seat==='miss'?'<span class="chip none">×</span>':`<span class="chip ${color(+seat)}">${+seat+1}</span>`;
+      const row=(icon,cell)=>`<div class="nr"><span class="ni">${icon}</span>${shown.map(cell).join('')}</div>`;
+      nb.innerHTML=row(IC.shot,n=>chip(n.shot||'',vColor))+
+        row(IC.hat,n=>chip(n.don||'',i=>(V.seats[i]||{}).role==='sheriff'?'sher':'nosher'))+
+        row(IC.star,n=>chip(n.check||'',i=>(V.seats[i]||{}).role==='don'?'don':vTeam(i)));
     };
   }
 
@@ -680,7 +668,7 @@ function startPanel(){
         <input id="fTitle" style="width:100%" placeholder="Например: Кубок города, 2 тур" aria-label="Название турнира">
         <div class="ac-row"><span>Акцентный цвет</span><input type="color" id="fAccent" aria-label="Акцентный цвет турнира">
           <span id="swatches" class="bar" style="gap:4px"></span><button data-a="accentReset">Сбросить</button></div>
-        <div class="muted" style="margin-top:4px">Цвет полоски у названия, шапки таблицы ночей и заголовков сцен. Цвета команд (красные, чёрные) не меняются.</div>
+        <div class="muted" style="margin-top:4px">Цвет полосок у названия и таблицы ночей и заголовков сцен. Цвета команд (красные, чёрные) не меняются.</div>
         <div class="bar" style="margin-top:8px">Игра <button data-a="gameMinus" aria-label="Предыдущая игра">−</button><input id="fGame" type="number" min="0" style="width:64px" aria-label="Номер игры"><button data-a="gamePlus" aria-label="Следующая игра">+</button><span class="muted">«Новая игра» увеличивает номер сама. 0 скрывает надпись.</span></div>
       </div>
       <div class="box"><h2>Игроки турнира</h2>
