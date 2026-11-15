@@ -32,13 +32,29 @@ body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;f
 .nights .nr{display:flex;align-items:center;gap:6px}
 .nights .ni{width:36px;height:40px;display:flex;align-items:center;justify-content:center}
 .nights .ni svg{width:28px;height:28px}
-.nights .chip{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;background:var(--paper);color:#111}
-.nights .chip.red{background:var(--red);color:#fff}
-.nights .chip.black{background:#000;color:#fff;box-shadow:inset 0 0 0 2px rgba(255,255,255,.4)}
-.nights .chip.sher{background:var(--brass);color:var(--brass-ink)}
-.nights .chip.don{background:var(--don);color:#fff}
-.nights .chip.nosher{background:#4a4a52;color:#fff}
-.nights .chip.none{background:rgba(255,255,255,.08);color:#77756f;font-weight:400}
+:is(.nights,.lhp) .chip{width:40px;height:40px;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:700;background:var(--paper);color:#111}
+:is(.nights,.lhp) .chip.red{background:var(--red);color:#fff}
+:is(.nights,.lhp) .chip.black{background:#000;color:#fff;box-shadow:inset 0 0 0 2px rgba(255,255,255,.4)}
+:is(.nights,.lhp) .chip.sher{background:var(--brass);color:var(--brass-ink)}
+:is(.nights,.lhp) .chip.don{background:var(--don);color:#fff}
+:is(.nights,.lhp) .chip.nosher{background:#4a4a52;color:#fff}
+:is(.nights,.lhp) .chip.none{background:rgba(255,255,255,.08);color:#77756f;font-weight:400}
+/* протокол дня на худе: таймер речи, выставленные, лучший ход */
+.spk{position:absolute;left:50%;top:36px;transform:translateX(-50%);display:none;align-items:center;gap:18px;background:var(--plate);border-bottom:4px solid var(--accent);padding:6px 24px 8px}
+.spk.on{display:flex}
+.spk .clk{font-size:54px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.spk .clk.zero{color:var(--hot)}
+.spk .sw{font-size:26px;font-weight:500;max-width:460px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* выставленный на голосование игрок: плашка чуть приподнята */
+.tile.nom{transform:translateY(calc(-22px*var(--ts)))}
+/* лучший ход — над плашкой первого убиенного */
+.tile .lhp{position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);display:none;align-items:center;gap:5px;background:var(--plate);border-bottom:4px solid var(--accent);padding:6px 8px;white-space:nowrap}
+.tile .lhp.on{display:flex}
+.tile .lhp .lb{font-size:calc(18px*var(--ts));color:var(--muted);letter-spacing:.05em;margin-right:2px}
+.tile .lhp .chip{width:calc(34px*var(--ts));height:calc(34px*var(--ts));font-size:calc(19px*var(--ts))}
+#stage.sc-win .spk{opacity:0}
+#stage.moving .spk{transition:opacity .4s}
+.tile.speak::before{content:"";position:absolute;inset:-5px;border:3px solid #fff;box-shadow:0 0 18px rgba(255,255,255,.45);pointer-events:none;z-index:2}
 .ic-hat{fill:var(--don)}
 .ic-hat .hb{fill:#16161b}
 .ic-shot{fill:none;stroke:var(--hot);stroke-width:2;stroke-linecap:round}
@@ -88,7 +104,7 @@ body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;f
 .tile .st svg{width:calc(20px*var(--ts));height:calc(20px*var(--ts));flex:none;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .tile.s-killed .st svg{stroke:var(--hot)}
 .tile.s-voted .st svg{stroke:var(--foul)}
-.tile.out .body{filter:grayscale(1);opacity:.45}
+.tile.out .body{filter:grayscale(1);opacity:var(--out-op,.45)} /* прозрачность задаётся в пульте */
 .tile.out .st{display:flex}
 /* фолы: карточка в правом верхнем углу */
 .tile .fc{position:absolute;right:calc(9px*var(--ts));top:calc(10px*var(--ts));width:calc(19px*var(--ts));height:calc(25px*var(--ts));border-radius:calc(3px*var(--ts));display:none;align-items:center;justify-content:center;font-size:calc(16px*var(--ts));font-weight:700;line-height:1;background:var(--foul);color:#15151a;transform:rotate(8deg);box-shadow:0 2px 6px rgba(0,0,0,.55),inset 0 0 0 1px rgba(0,0,0,.18)}
@@ -129,12 +145,20 @@ body.panel{background:#121216;color:#e9e7e2;font-family:var(--f-ui);font-size:13
 .panel button,.panel input,.panel select{font:inherit;color:inherit}
 .panel button{background:#26262d;border:1px solid #34343c;padding:6px 10px;cursor:pointer;border-radius:4px;white-space:nowrap}
 .panel button:hover{background:#2f2f38}
+.panel button:disabled{opacity:.4;cursor:default;background:#26262d}
 .panel button:focus-visible,.panel input:focus-visible,.panel select:focus-visible,.panel label.thumb:focus-within{outline:2px solid #7aa7ff;outline-offset:1px}
 .panel button.warn{background:#3a2020;border-color:#5a2a2a}
 .panel button.on{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
 .panel input,.panel select{background:#1b1b21;border:1px solid #34343c;padding:5px 7px;border-radius:4px;min-width:0}
-.p-head{padding:10px 14px;border-bottom:1px solid #26262d;position:sticky;top:0;background:#121216;z-index:2}
+.p-head{padding:8px 14px;border-bottom:1px solid #26262d;position:sticky;top:0;background:#121216;z-index:2;display:flex;flex-wrap:wrap;align-items:center;gap:6px 18px}
 .p-head h1{font-family:var(--f-display);font-size:20px;font-weight:600}
+.p-tabs{display:flex;flex-wrap:wrap;gap:4px}
+.p-tabs a{padding:6px 14px;border-radius:4px;color:#c9c6bf;text-decoration:none;font-weight:500}
+.p-tabs a:hover{background:#1f1f26;color:#fff}
+.p-tabs a.on{background:var(--accent);color:#fff}
+.p-tabs a:focus-visible{outline:2px solid #7aa7ff;outline-offset:1px}
+.p-net{margin-left:auto;font-size:12px;color:#a09d95;white-space:nowrap}
+.page:not(.on){display:none}
 .p-grid{display:grid;grid-template-columns:1fr;gap:12px;padding:12px}
 @media (min-width:1050px){.p-grid{grid-template-columns:minmax(560px,1.3fr) 1fr}}
 .box{background:#18181d;border:1px solid #26262d;border-radius:6px;padding:12px;margin-bottom:12px}
@@ -178,6 +202,7 @@ label.thumb input{position:absolute;opacity:0;width:1px;height:1px}
 .rl{max-height:460px;overflow:auto}
 .rr{display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid #23232a}
 .rr input.rn{flex:1}
+.rr input.rmu{flex:1;font-size:12px;padding:3px 7px;color:#a09d95}
 .rr .seat{font-size:12px;color:#8a877f;min-width:62px;text-align:right}
 .rr .rm{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
 .rr .rt{display:flex;align-items:center;gap:6px}
@@ -260,6 +285,15 @@ body.scene #stage{display:flex;flex-direction:column;align-items:center;justify-
 #hint button{margin-top:10px;font:600 16px var(--f-ui);color:#fff;background:var(--red);border:0;border-radius:4px;padding:10px 18px;cursor:pointer}
 #hint button:focus-visible{outline:2px solid #7aa7ff;outline-offset:2px}
 body.hosted .local-only{display:none}
+body.panel:not(.hosted) .hosted-only{display:none}
+a.mu-bm{display:inline-block;padding:6px 12px;border-radius:4px;background:#2f6f3f;color:#fff;font-weight:600;text-decoration:none;cursor:grab}
+.mt{width:100%;border-collapse:collapse;margin-top:8px}
+.mt td{padding:4px;border-top:1px solid #23232a}
+.mt tr.cur td{background:#23232b}
+.mt tr.cur td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.mt .ok{color:#3ecf6e;font-size:12px}
+.mt td.act{text-align:right;white-space:nowrap}
+.mt td.act button{padding:2px 8px}
 .login{display:grid;gap:10px;max-width:340px;margin:14vh auto 0}
 </style>
 </head>
@@ -268,7 +302,7 @@ body.hosted .local-only{display:none}
 /* ================= ПРАВИЛА ИГРЫ =================
    Этот блок выполняют и пульт, и сервер судьи (judge/game.js), поэтому к странице он не обращается. */
 const ROLES={civ:{t:'Мирный',team:'red'},sheriff:{t:'Шериф',team:'red'},mafia:{t:'Мафия',team:'black'},don:{t:'Дон',team:'black'}};
-const UI_DEF={th:236,ts:1,gap:12,mb:30,side:40,ns:1,is:1};
+const UI_DEF={th:236,ts:1,gap:12,mb:30,side:40,ns:1,is:1,ot:55};
 const ACCENT_DEF='#c41e3a';
 const SCENES=['game','red','black']; // что показывает худ: игру или победу команды
 const okColor=c=>/^#[0-9a-f]{6}$/i.test(c||'');
@@ -277,8 +311,36 @@ const emptySeat=pid=>({pid:pid||'',role:'',status:'alive',fouls:0});
 const roleKeys=id=>Object.keys(ROLES).map(r=>id+'.'+r); // ключи фото игрока для каждой роли
 function defaultState(){
   const roster=Array.from({length:10},(_,i)=>({id:newId()+i,nick:'Игрок '+(i+1)}));
-  return {v:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,photoVer:0,showFouls:true,scene:'game',judge:{url:'',room:'',hud:'',key:''},wait:{show:false,running:false,endAt:0,left:600000,total:600000}};
+  return {v:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,mu:null,photoVer:0,showFouls:true,scene:'game',judge:{url:'',room:'',hud:'',key:''},wait:{show:false,running:false,endAt:0,left:600000,total:600000},
+    ...protocolDefaults()};
 }
+/* ---- протокол дня, как на MafiaUniverse: выставления и голоса по дням, таймер речи, лучший ход, заметки ---- */
+const SPEECH_MS=60000;
+function protocolDefaults(){return {days:[{noms:[]}],timer:{running:false,endAt:0,left:SPEECH_MS,total:SPEECH_MS,speaker:''},lh:['','',''],lhPu:'',notes:''}}
+// в играх, сохранённых до появления протокола, этих полей нет
+function protocol(){
+  const d=protocolDefaults();
+  if(!Array.isArray(S.days)||!S.days.length)S.days=d.days;
+  if(!S.timer||typeof S.timer!=='object')S.timer=d.timer;
+  if(!Array.isArray(S.lh)||S.lh.length!==3)S.lh=d.lh;
+  if(typeof S.notes!=='string')S.notes='';
+  if(typeof S.lhPu!=='string')S.lhPu='';
+}
+const days=()=>Array.isArray(S.days)&&S.days.length?S.days:protocolDefaults().days;
+const curDay=()=>days()[days().length-1];
+/* этапы голосования дня: vote — основное, revote — переголосование между набравшими поровну,
+   lift — вопрос «поднять всех?», done — итог записан (out — кто покинул стол) */
+const stageOf=d=>['vote','revote','lift','done'].includes(d.stage)?d.stage:'vote';
+// кандидаты текущего этапа: их плашки на худе приподняты
+function ballot(d){const st=stageOf(d);return st==='vote'?d.noms:st==='revote'?(d.revote||[]):st==='lift'?(d.tied||[]).map(i=>({i,v:''})):[]}
+const dayMsg=d=>({noms:d.noms.map(n=>({i:n.i,v:n.v})),stage:stageOf(d),revote:(d.revote||[]).map(n=>({i:n.i,v:n.v})),tied:[...(d.tied||[])],out:[...(d.out||[])]});
+const timerOf=()=>S.timer&&typeof S.timer==='object'?S.timer:protocolDefaults().timer;
+function timerLeft(){const t=timerOf();return t.running?Math.max(0,t.endAt-Date.now()):Math.max(0,+t.left||0)}
+// первый убиенный: тот, у кого судья записал лучший ход, а пока не записал — отстрел первой ночи
+const firstKilled=()=>(typeof S.lhPu==='string'&&S.lhPu)||(S.nights[0]&&S.nights[0].shot)||'';
+const okSeat=v=>v===''||(/^\d+$/.test(v)&&!!S.seats[+v]);
+// таймер для экранов: сколько осталось на момент отправки, дальше экран считает сам
+function timerView(){const t=timerOf();return {running:!!t.running,remain:timerLeft(),total:+t.total||SPEECH_MS,speaker:t.speaker||''}}
 function normalState(s){const o=Object.assign(defaultState(),s);o.ui=Object.assign({},UI_DEF,s.ui);return o}
 function waitLeft(){const w=S.wait;return w.running?Math.max(0,w.endAt-Date.now()):Math.max(0,w.left)}
 const person=id=>S.roster.find(r=>r.id===id)||null;
@@ -293,11 +355,14 @@ function buildView(){
     nights:S.nights.map(n=>({shot:n.shot||'',check:n.check||'',don:n.don||''})),
     ui:Object.assign({},UI_DEF,S.ui),accent:okColor(S.accent)?S.accent:ACCENT_DEF,
     scene:SCENES.includes(S.scene)?S.scene:'game',
+    timer:timerView(),day:days().length,noms:ballot(curDay()).map(n=>({i:n.i,v:n.v})),
+    lh:{pu:firstKilled(),seats:(Array.isArray(S.lh)?S.lh:['','','']).map(String)},
     wait:{show:!!S.wait.show,running:!!S.wait.running,remain:waitLeft(),sentAt:Date.now()}};
 }
 function seatedPhotos(){return new Set(S.seats.flatMap(s=>[s.pid,photoKey(s)]).filter(Boolean))} // экранам победы нужно обычное фото, худу — фото роли
 function stateMsg(){
-  return {kind:'state',title:S.title,game:+S.game||0,seats:S.seats.map((s,i)=>({nick:seatNick(i),role:s.role,st:statusOf(i),kn:shotNight(i)+1,fouls:+s.fouls||0})),nights:S.nights.map(n=>({shot:n.shot||'',check:n.check||'',don:n.don||''}))};
+  return {kind:'state',title:S.title,game:+S.game||0,seats:S.seats.map((s,i)=>({nick:seatNick(i),role:s.role,st:statusOf(i),kn:shotNight(i)+1,fouls:+s.fouls||0})),nights:S.nights.map(n=>({shot:n.shot||'',check:n.check||'',don:n.don||''})),
+    days:days().map(dayMsg),timer:timerView(),pu:firstKilled(),lh:(Array.isArray(S.lh)?S.lh:['','','']).map(String),notes:typeof S.notes==='string'?S.notes:''};
 }
 // ночь для кнопки «Убит»: текущая, а если в ней пусто, предыдущая без отстрела (там уже могут быть проверки)
 function shotTarget(){
@@ -320,11 +385,59 @@ const J={
     if(!night||!['shot','check','don'].includes(c.f)||(v!==''&&!(/^\d+$/.test(v)&&S.seats[+v])))return;
     night[c.f]=v;
     nextNight();
-  }
+  },
+  // выставление на голосование в текущий день: повторное нажатие снимает, порядок выставления сохраняется
+  nom(c){
+    const d=curDay();if(stageOf(d)!=='vote')return; // после итога состав выставленных не меняется
+    const k=d.noms.findIndex(n=>n.i===String(c.i));
+    if(k>=0)d.noms.splice(k,1);else d.noms.push({i:String(c.i),v:''});
+  },
+  // число голосов за кандидата текущего этапа (0–10)
+  vote(c){
+    const d=curDay(),st=stageOf(d),list=st==='vote'?d.noms:st==='revote'?d.revote:null,v=Number(c.v);
+    const n=list&&list.find(x=>x.i===String(c.i));
+    if(n&&Number.isInteger(v)&&v>=0&&v<=10)n.v=v;
+  },
+  // итог этапа: один лидер покидает стол, при равенстве — переголосование, а после него — вопрос «поднять всех?»
+  voteEnd(){
+    const d=curDay(),st=stageOf(d);if(st!=='vote'&&st!=='revote')return;
+    const list=st==='vote'?d.noms:d.revote;if(!list||!list.length)return;
+    const max=Math.max(...list.map(n=>+n.v||0)),lead=list.filter(n=>(+n.v||0)===max).map(n=>n.i);
+    if(lead.length===1)voteOut(d,lead);
+    else if(st==='vote'){d.stage='revote';d.revote=lead.map(i=>({i,v:''}))}
+    else{d.stage='lift';d.tied=lead}
+  },
+  lift(c){const d=curDay();if(stageOf(d)!=='lift')return;if(c.v==='up')voteOut(d,d.tied);else if(c.v==='stay'){d.stage='done';d.out=[]}},
+  // отмена итога: заголосованные этим голосованием возвращаются в игру, голоса основного этапа остаются
+  voteReset(){
+    const d=curDay();(d.out||[]).forEach(i=>{const s=S.seats[+i];if(s&&s.status==='voted')s.status='alive'});
+    d.stage='vote';d.revote=[];d.tied=[];d.out=[];
+  },
+  votes(c){const n=curDay().noms.find(x=>x.i===String(c.i));if(n)n.v=Math.min(10,Math.max(0,(+n.v||0)+(c.d>0?1:-1)))},
+  day(){const t=S.timer;S.days.push({noms:[],stage:'vote'});t.running=false;t.speaker='';t.left=t.total},
+  timer(c){
+    const t=S.timer,now=Date.now();
+    if(c.op==='speak'){const v=String(c.v??'');if(!okSeat(v))return;t.speaker=v;t.left=t.total;t.running=v!=='';t.endAt=now+t.total}
+    else if(c.op==='start'){if(!t.running&&timerLeft()>0){t.endAt=now+timerLeft();t.running=true}}
+    else if(c.op==='pause'){if(t.running){t.left=timerLeft();t.running=false}}
+    else if(c.op==='reset'){t.running=false;t.left=t.total}
+    else if(c.op==='set'&&Number.isInteger(c.ms)&&c.ms>=5000&&c.ms<=600000){t.total=c.ms;t.left=c.ms;t.running=false}
+  },
+  lh(c){const v=String(c.v??'');if(Number.isInteger(c.k)&&c.k>=0&&c.k<3&&okSeat(v))S.lh[c.k]=v},
+  // ячейка первого убиенного в таблице судьи: игрок c.i становится первым убиенным, c.v — до трёх номеров его лучшего хода
+  lhset(c){
+    const picks=Array.isArray(c.v)?[...new Set(c.v.map(String))].filter(v=>v!==''&&okSeat(v)).slice(0,3):[];
+    S.lhPu=picks.length?String(c.i):'';
+    S.lh=[0,1,2].map(j=>picks[j]||'');
+  },
+  notes(c){S.notes=String(c.v??'').slice(0,2000)}
 };
+const NO_SEAT=new Set(['night','day','timer','lh','notes','voteEnd','lift','voteReset']); // команды, которые не относятся к одному игроку
+function voteOut(d,seats){d.stage='done';d.out=[...seats];seats.forEach(i=>{const s=S.seats[+i];if(s&&s.status==='alive')s.status='voted'})}
 // выполняет команду судьи и говорит, надо ли сохранить игру
 function judgeCommand(m){
-  if(!Object.hasOwn(J,m.a)||(m.a!=='night'&&!(Number.isInteger(m.i)&&m.i>=0&&m.i<S.seats.length)))return false;
+  if(!Object.hasOwn(J,m.a)||(!NO_SEAT.has(m.a)&&!(Number.isInteger(m.i)&&m.i>=0&&m.i<S.seats.length)))return false;
+  protocol();
   J[m.a](m);return true;
 }
 // Пульт отправляет на сервер только изменённые поля, поэтому одновременные правки судьи и пульта не затирают друг друга.
@@ -370,7 +483,8 @@ const UI_FIELDS=[
   ['mb','Отступ плашек от низа',0,200,1,'px'],
   ['side','Отступ плашек от краёв',0,200,1,'px'],
   ['ns','Размер таблицы ночей',.5,1.6,.05,'×'],
-  ['is','Размер плашки с названием',.5,1.6,.05,'×']
+  ['is','Размер плашки с названием',.5,1.6,.05,'×'],
+  ['ot','Прозрачность выбывших игроков',0,100,5,'%']
 ];
 const ACCENTS=['#c41e3a','#e8590c','#f2c230','#2f9e44','#1c7ed6','#8977fe','#d6336c','#e8e8e8'];
 function applyAccent(c){
@@ -384,6 +498,57 @@ function lsGet(k){try{return localStorage.getItem(k)}catch(e){return null}}
 function lsSet(k,v){try{v==null?localStorage.removeItem(k):localStorage.setItem(k,v);return true}catch(e){return false}}
 function loadJSON(k){const r=lsGet(k);try{return r?JSON.parse(r):null}catch(e){return null}}
 const CLIENT=Math.random().toString(36).slice(2);
+const gameText=v=>v.game?'Игра '+v.game:'';
+
+/* ---- Рассадка из MafiaUniverse ----
+   На сайте рассадка видна только после входа, а вход закрыт капчей. Поэтому её читает закладка «Отправить в HUD»
+   прямо со страницы «Игры» турнира, открытой у судьи, и передаёт в пульт через postMessage. */
+const MU_ORIGINS=['https://mafiauniverse.org','https://mafiaworld.org'];
+// Выполняется и в закладке на сайте MafiaUniverse, поэтому ничего не берёт снаружи.
+function muParse(doc,url){
+  const txt=e=>(e&&e.textContent||'').replace(/\s+/g,' ').trim();
+  const games=[...doc.querySelectorAll('.box_game_res')].map(b=>{
+    const a=b.querySelector('a[href*="/Games/Details/"]'),t=b.querySelector('table');
+    if(!a||!t)return null;
+    const info=[...b.children].filter(x=>x.tagName==='DIV').map(txt),seats=[];
+    t.querySelectorAll('tr').forEach(r=>{const c=r.querySelectorAll('td'),n=parseInt(txt(c[0]),10);if(n>=1&&n<=10)seats[n-1]=txt(c[1])});
+    return {key:a.getAttribute('href').split('/').pop(),title:txt(a),judge:info[1]||'',date:info[2]||'',ended:t.classList.contains('ended_true'),seats:Array.from({length:10},(_,i)=>seats[i]||'')};
+  }).filter(Boolean);
+  const id=(String(url||'').match(/\/(\d+)\/?(?:[?#].*)?$/)||[])[1]||'';
+  return {id,url:String(url||''),title:String(doc.title||'').replace(/\s*-\s*MafiaUniverse\s*$/i,'').replace(/^Результаты игр\s*/i,''),games};
+}
+// Закладку генерирует пульт: в неё зашит только адрес этого сервера.
+function muBookmarklet(panelUrl){
+  const code=`(()=>{const P=${JSON.stringify(panelUrl)},H=new URL(P).origin;${muParse.toString()}
+const d=muParse(document,location.href);
+if(!d.games.length){alert('Рассадка не найдена. Откройте на MafiaUniverse раздел «Игры» турнира и нажмите закладку ещё раз.');return}
+const w=window.open(P,'mafiahud-panel');if(!w){alert('Браузер не дал открыть пульт HUD. Разрешите всплывающие окна для этого сайта.');return}
+let ok=0,n=0;addEventListener('message',e=>{if(e.origin===H&&e.data&&e.data.app==='mafiahud-mu-ack')ok=1});
+const t=setInterval(()=>{if(ok){clearInterval(t);return}if(++n>240){clearInterval(t);alert('Пульт HUD не ответил. Войдите в пульт и нажмите закладку ещё раз.');return}try{w.postMessage({app:'mafiahud-mu',data:d},H)}catch(e){}},500)})()`;
+  return 'javascript:'+encodeURIComponent(code);
+}
+// Данные пришли с чужого сайта, поэтому из них берутся только строки нужной длины.
+function muClean(d){
+  if(!d||!Array.isArray(d.games)||!d.games.length||d.games.length>500)return null;
+  const str=(v,n)=>String(v??'').replace(/\s+/g,' ').trim().slice(0,n);
+  const games=d.games.map(g=>{
+    if(!g||!Array.isArray(g.seats))return null;
+    const title=str(g.title,80),m=title.match(/^(.*?)\s*стол\s*(\d+)\s*$/i),round=m?m[1]:title;
+    const seats=Array.from({length:10},(_,i)=>str(g.seats[i],40));
+    return {key:str(g.key,64),title,round,table:m?+m[2]:1,
+      judge:str(g.judge,60),date:str(g.date,30),ended:!!g.ended,ready:seats.some(Boolean),seats}; // финал часто заводят до того, как известна рассадка
+  }).filter(g=>g&&g.key);
+  if(!games.length)return null;
+  const url=str(d.url,300);
+  return {id:str(d.id,12).replace(/\D/g,''),title:str(d.title,120),url:MU_ORIGINS.some(o=>url.startsWith(o+'/'))?url:'',games};
+}
+let muInbox=null,muTake=null; // рассадка из закладки ждёт, пока пульт откроется и войдёт
+addEventListener('message',e=>{
+  if(!MU_ORIGINS.includes(e.origin)||!e.data||e.data.app!=='mafiahud-mu')return;
+  try{e.source.postMessage({app:'mafiahud-mu-ack'},e.origin)}catch(err){}
+  const d=muClean(e.data.data);if(!d)return;
+  if(muTake)muTake(d);else muInbox=d;
+});
 
 /* ---- Связь: WebSocket-сервер OBS (основной канал) + BroadcastChannel (запасной) ---- */
 const Net=(()=>{
@@ -472,7 +637,7 @@ const team=i=>ROLES[S.seats[i].role||'civ'].team; // игрок без роли 
 <!-- ================= ЭКРАНЫ: оверлей и сцены ================= -->
 <script>
 if(MODE!=='panel'){
-  let V=loadJSON(VKEY);
+  let V=loadJSON(VKEY),viewAt=Date.now(); // viewAt: когда пришли данные, от него экран сам считает таймер
   const pc={};
   const photo=pid=>{if(!pid)return null;if(!(pid in pc))pc[pid]=lsGet(VPKEY+pid)||lsGet(PKEY+pid)||null;return pc[pid]};
   const vTeam=i=>ROLES[(V.seats[i]||{}).role||'civ'].team;
@@ -487,7 +652,7 @@ if(MODE!=='panel'){
   }
   function applyView(v){
     if(!v||!v.t||(V&&V.t===v.t))return;
-    V=v;lsSet(VKEY,JSON.stringify(v));prune();draw();
+    V=v;viewAt=Date.now();lsSet(VKEY,JSON.stringify(v));prune();draw();
   }
   Net.on(m=>{
     if(m.kind==='view')applyView(m.view);
@@ -505,6 +670,7 @@ if(MODE!=='panel'){
       <div class="dim"></div>
       <div class="info"><div class="in"><div class="t"></div><div class="g"></div></div></div>
       <div class="nights"></div><div class="row"></div>
+      <div class="spk"><div class="clk"></div><div class="sw"></div></div>
       <div class="wb"><div class="win red"><span></span></div></div></div>`;
     const stage=document.getElementById('stage'),q=s=>stage.querySelector(s),row=q('.row');
     let scene=null,moveT=null,flipT=null;
@@ -535,7 +701,7 @@ if(MODE!=='panel'){
     const tiles=Array.from({length:10},(_,i)=>{
       const t=document.createElement('div');
       t.innerHTML=`<div class="body"><div class="ph"></div><div class="accent"></div><div class="badge"></div><div class="rp"><span></span></div>
-        <div class="bot"><div class="num">${i+1}</div><div class="nick"><span></span></div></div></div><div class="st"></div><div class="fc"></div>`;
+        <div class="bot"><div class="num">${i+1}</div><div class="nick"><span></span></div></div></div><div class="st"></div><div class="fc"></div><div class="lhp"></div>`;
       row.appendChild(t);return t;
     });
     const paintNow=(el,p)=>{el.style.backgroundImage=p?`url("${p}")`:'none';el.innerHTML=p?'':SIL};
@@ -579,10 +745,12 @@ if(MODE!=='panel'){
       const u=Object.assign({},UI_DEF,V.ui||{});
       stage.style.setProperty('--th',u.th+'px');stage.style.setProperty('--ts',u.ts);
       stage.style.setProperty('--gap',u.gap+'px');stage.style.setProperty('--mb',u.mb+'px');stage.style.setProperty('--side',u.side+'px');
+      stage.style.setProperty('--out-op',((100-Math.min(100,Math.max(0,+u.ot)))/100).toFixed(2)); // убитые, заголосованные и удалённые
       q('.info .t').textContent=V.title||'';
-      q('.info .g').textContent=V.game?'Игра '+V.game:'';
-      q('.info .g').style.display=V.game?'block':'none';
-      q('.info').style.display=(V.title||V.game)?'flex':'none';
+      const gl=gameText(V);
+      q('.info .g').textContent=gl;
+      q('.info .g').style.display=gl?'block':'none';
+      q('.info').style.display=(V.title||gl)?'flex':'none';
       const sc=SCENES.includes(V.scene)?V.scene:'game';
       setScene(sc);placeScene(u);
       tiles.forEach((t,i)=>{
@@ -591,7 +759,12 @@ if(MODE!=='panel'){
         const res=sc==='game'?'':s.pid&&ROLES[role||'civ'].team===sc?' winner':' loser';
         // победители показываются целиком, даже если их убили или заголосовали
         const out=st!=='alive'&&res!==' winner';
-        t.className=`tile team-${role?ROLES[role].team:'norole'} r-${role||'none'} s-${out?st:'alive'}`+(out?' out':'')+res;
+        const speak=sc==='game'&&V.timer&&V.timer.speaker===String(i); // плашка того, кто сейчас говорит
+        const nom=sc==='game'&&st==='alive'&&(V.noms||[]).some(n=>n.i===String(i));
+        t.className=`tile team-${role?ROLES[role].team:'norole'} r-${role||'none'} s-${out?st:'alive'}`+(out?' out':'')+res+(speak?' speak':'')+(nom?' nom':'');
+        const lh=V.lh||{},picks=(lh.seats||[]).filter(v=>v!==''),lp=t.querySelector('.lhp'),showLh=sc==='game'&&lh.pu===String(i)&&picks.length>0;
+        lp.classList.toggle('on',showLh);
+        lp.innerHTML=showLh?'<span class="lb">ЛХ</span>'+picks.map(v=>`<span class="chip ${vColor(+v)}">${+v+1}</span>`).join(''):'';
         // фото ещё в пути (s.hp): оставляем прежнее, с его приходом draw повторится
         const pic=photo(s.ph||s.pid);if(pic||!s.hp)paint(t.querySelector('.ph'),pic);
         const bd=t.querySelector('.badge'),was=bd._r;
@@ -615,13 +788,27 @@ if(MODE!=='panel'){
       const has=n=>(n.shot||'')!==''||(n.check||'')!==''||(n.don||'')!=='';
       const shown=ns.slice(0,ns.reduce((last,n,k)=>has(n)?k+1:last,0)); // столбец — ночь, поэтому пустая ночь посреди игры тоже остаётся
       nb.classList.toggle('on',shown.length>0);
-      if(!shown.length){nb.innerHTML='';return}
       const chip=(seat,color)=>seat===''||seat==='miss'?'<span class="chip none">×</span>':`<span class="chip ${color(+seat)}">${+seat+1}</span>`;
       const row=(icon,cell)=>`<div class="nr"><span class="ni">${icon}</span>${shown.map(cell).join('')}</div>`;
-      nb.innerHTML=row(IC.shot,n=>chip(n.shot||'',vColor))+
+      nb.innerHTML=shown.length?row(IC.shot,n=>chip(n.shot||'',vColor))+
         row(IC.hat,n=>chip(n.don||'',i=>(V.seats[i]||{}).role==='sheriff'?'sher':'nosher'))+
-        row(IC.star,n=>chip(n.check||'',i=>(V.seats[i]||{}).role==='don'?'don':vTeam(i)));
+        row(IC.star,n=>chip(n.check||'',i=>(V.seats[i]||{}).role==='don'?'don':vTeam(i))):'';
+      drawProtocol();
     };
+    /* ---- таймер речи; выставленные и лучший ход показываются на самих плашках ---- */
+    function drawProtocol(){
+      const t=V.timer||{},sp=t.speaker||'',spk=q('.spk');
+      spk.classList.toggle('on',sp!==''||!!t.running);
+      q('.spk .sw').textContent=sp===''?'':`${+sp+1} · ${(V.seats[+sp]||{}).nick||''}`;
+      q('.spk .sw').style.display=sp===''?'none':'';
+      tickTimer();
+    }
+    function tickTimer(){
+      const t=V&&V.timer;if(!t)return;
+      const ms=t.running?Math.max(0,t.remain-(Date.now()-viewAt)):Math.max(0,+t.remain||0),s=Math.ceil(ms/1000);
+      const c=q('.spk .clk');c.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');c.classList.toggle('zero',ms<=0);
+    }
+    setInterval(tickTimer,200);
   }
 
   /* ---------- сцены: ожидание / победа ---------- */
@@ -655,7 +842,7 @@ if(MODE!=='panel'){
     if(MODE==='wait')setInterval(tickTimer,200);
     draw=function(){
       applyAccent(V&&V.accent);
-      const title=V?V.title||'':'',g=V&&V.game?'Игра '+V.game:'';
+      const title=V?V.title||'':'',g=V?gameText(V):'';
       $('scTitle').textContent=title;$('scTitle').parentElement.classList.toggle('hide',!title);
       $('scGame').textContent=g;$('scGame').classList.toggle('hide',!g);
       if(MODE==='wait')tickTimer();
@@ -683,11 +870,19 @@ if(MODE!=='panel'){
 
 <!-- ================= PANEL ================= -->
 <script>
+/* Пульт разбит на страницы. Открытая страница хранится в адресе (#design или #panel/design у пульта из файла),
+   поэтому её можно открыть сразу по ссылке, а каждая вкладка браузера помнит свою. */
+const PANEL_TABS=[['game','Игра'],['players','Игроки'],['judge','Судья'],['design','Дизайн'],['obs','OBS']];
+const tabHref=k=>'#'+(HOSTED?'':'panel/')+k;
+const tabFromHash=()=>{const m=location.hash.match(/(?:^#|\/)(game|players|judge|design|obs)$/);return m?m[1]:'game'};
 function startPanel(){
   document.body.className=HOSTED?'panel hosted':'panel';
   document.body.innerHTML=`
-  <header class="p-head"><h1>HUD для мафии · пульт</h1></header>
-  <div class="p-grid">
+  <header class="p-head"><h1>HUD для мафии · пульт</h1>
+    <nav class="p-tabs" aria-label="Страницы пульта">${PANEL_TABS.map(([k,t])=>`<a href="${tabHref(k)}" data-tab="${k}">${t}</a>`).join('')}</nav>
+    <span class="p-net conn"><span class="dot" id="hDot"></span><span id="hSt"></span></span>
+  </header>
+  <section class="page p-grid" data-page="game" aria-label="Игра">
     <div>
       <div class="box"><h2>Экран худа</h2>
         <div class="bar" id="scenes"><button data-a="scene" data-s="game">Игра</button><button data-a="scene" data-s="red">Победа мирных</button><button data-a="scene" data-s="black">Победа мафии</button></div>
@@ -699,52 +894,32 @@ function startPanel(){
         <div class="bar"><button data-a="clearSeats">Освободить все места</button></div>
         <div class="bar"><label><input type="checkbox" id="fFouls">Показывать фолы на плашках</label><span class="muted">Фол ставится кнопкой «+» в колонке «Фолы». Четвёртый фол удаляет игрока.</span></div>
       </div>
+    </div>
+    <div>
       <div class="box"><h2>Ночи: отстрел и проверки</h2>
         <table class="nt"><thead><tr><th></th><th>Отстрел мафии</th><th>Проверка шерифа</th><th>Проверка дона</th><th></th></tr></thead><tbody id="nights"></tbody></table>
         <div class="bar" style="margin-top:8px"><button data-a="addNight">Добавить ночь</button><span class="muted">Результаты проверок определяются по ролям. На экране красный и чёрный показываются цветом номера, найденный шерифом дон — фиолетовым, у дона жёлтый номер означает, что он нашёл шерифа.</span></div>
       </div>
       <div class="box"><h2>Игра</h2>
+        <div class="bar">Игра <button data-a="gameMinus" aria-label="Предыдущая игра">−</button><input id="fGame" type="number" min="0" style="width:64px" aria-label="Номер игры"><button data-a="gamePlus" aria-label="Следующая игра">+</button><span class="muted">0 скрывает надпись.</span></div>
         <div class="bar"><button data-a="newGame" class="warn">Новая игра</button><span class="muted">Сбрасывает роли, статусы, фолы и ночи и увеличивает номер игры. Рассадка остаётся.</span></div>
       </div>
-      <div class="box"><h2>Размеры плашек</h2>
-        <div class="sz" id="sizes"></div>
-        <div class="bar" style="margin-top:8px"><button data-a="uiReset">Сбросить размеры</button><span class="muted">Меняется сразу в оверлее, смотрите в превью ниже.</span></div>
-      </div>
-      <div class="box"><h2>Превью оверлея</h2>
-        <div class="bar"><button id="pvBtn">Показать превью</button><span class="muted">Для проверки. В OBS лучше не включать.</span></div>
-        <div id="pvWrap" style="display:none;margin-top:8px"><div class="pv" id="pv"></div></div>
+    </div>
+  </section>
+  <section class="page p-grid" data-page="players" aria-label="Игроки">
+    <div>
+      <div class="box"><h2>Рассадка из MafiaUniverse</h2>
+        <div class="hosted-only">
+          <div class="bar"><a class="mu-bm" id="muBm" href="#" title="Перетащите на панель закладок">Отправить в HUD</a><span class="muted">Перетащите кнопку на панель закладок браузера. Потом на MafiaUniverse войдите, откройте раздел «Игры» турнира и нажмите эту закладку.</span></div>
+          <div id="mu" style="margin-top:8px"></div>
+        </div>
+        <div class="muted local-only">Работает в пульте на сервере: откройте адрес-сервера/panel.</div>
       </div>
     </div>
     <div>
-      <div class="box conn"><h2 id="cTitle">Связь с OBS</h2>
-        <div><span class="dot" id="cDot"></span><span class="st" id="cSt">Подключение…</span></div>
-        <div class="muted" id="cHint" style="margin-top:4px"></div>
-        <div class="fl3 local-only"><input id="cHost" aria-label="Адрес"><input id="cPort" type="number" aria-label="Порт"><input id="cPw" type="password" placeholder="пароль, если включён" aria-label="Пароль WebSocket"><button data-a="reconnect">Подключить</button></div>
-        <div class="disp" id="cDisp"></div>
-      </div>
-      <div class="box"><h2>Судья с телефона</h2>
-        <div class="bar local-only"><input id="jUrl" style="flex:1" placeholder="https://адрес-сервера" aria-label="Адрес сервера судьи"><input id="jKey" type="password" style="flex:1" placeholder="пароль сервера, если есть" aria-label="Пароль сервера судьи"><button data-a="jConnect">Подключить</button></div>
-        <div class="muted" id="jSt" style="margin-top:6px">Не подключено</div>
-        <div class="bar" style="margin-top:8px"><input id="jLink" style="flex:1" readonly aria-label="Ссылка для судьи"><button data-a="jCopy">Копировать</button><button data-a="jNew">Новая ссылка</button></div>
-        <div class="bar local-only" style="margin-top:8px"><button data-a="jMove">Перенести игру на сервер</button><span class="muted">Игроки, роли и фото сохранятся на сервере. После этого судья и худ работают без этого устройства.</span></div>
-      </div>
-      <div class="box"><h2>Худ в OBS через сервер</h2>
-        <div class="muted"><span class="local-only">Укажите адрес и пароль сервера в блоке выше. </span>Вставьте первую ссылку в URL источника «Браузер» в OBS: худ сам показывает и игру, и экраны победы. Две другие ссылки — отдельные экраны победы, если они ещё нужны. Ссылки показывают роли игроков, поэтому не публикуйте их.</div>
-        <div class="bar" style="margin-top:8px"><input id="hLink" style="flex:1" readonly aria-label="Ссылка на худ"><button data-a="hCopy">Копировать</button></div>
-        <div class="bar" style="margin-top:6px"><input id="rLink" style="flex:1" readonly aria-label="Ссылка на экран победы мирных"><button data-a="rCopy">Копировать</button></div>
-        <div class="bar" style="margin-top:6px"><input id="bLink" style="flex:1" readonly aria-label="Ссылка на экран победы мафии"><button data-a="bCopy">Копировать</button></div>
-        <div class="bar" style="margin-top:6px"><button data-a="hNew">Новые ссылки</button></div>
-      </div>
-      <div class="box"><h2>Название турнира</h2>
-        <input id="fTitle" style="width:100%" placeholder="Например: Кубок города, 2 тур" aria-label="Название турнира">
-        <div class="ac-row"><span>Акцентный цвет</span><input type="color" id="fAccent" aria-label="Акцентный цвет турнира">
-          <span id="swatches" class="bar" style="gap:4px"></span><button data-a="accentReset">Сбросить</button></div>
-        <div class="muted" style="margin-top:4px">Цвет полосок у названия и таблицы ночей и заголовков сцен. Цвета команд (красные, чёрные) не меняются.</div>
-        <div class="bar" style="margin-top:8px">Игра <button data-a="gameMinus" aria-label="Предыдущая игра">−</button><input id="fGame" type="number" min="0" style="width:64px" aria-label="Номер игры"><button data-a="gamePlus" aria-label="Следующая игра">+</button><span class="muted">«Новая игра» увеличивает номер сама. 0 скрывает надпись.</span></div>
-      </div>
       <div class="box"><h2>Игроки турнира</h2>
         <div class="rl" id="roster"></div>
-        <div class="bar" style="margin-top:8px"><button data-a="addOne">Добавить игрока</button></div>
+        <div class="bar" style="margin-top:8px"><button data-a="addOne">Добавить игрока</button><button data-a="delAll" class="warn">Удалить всех игроков</button></div>
         <div style="margin-top:10px">
           <label class="muted" for="bulk">Добавить списком, по одному нику в строке:</label>
           <textarea id="bulk" style="margin-top:4px"></textarea>
@@ -752,7 +927,58 @@ function startPanel(){
         </div>
       </div>
     </div>
-  </div>`;
+  </section>
+  <section class="page p-grid" data-page="judge" aria-label="Судья">
+    <div>
+      <div class="box"><h2>Судья с телефона</h2>
+        <div class="bar local-only"><input id="jUrl" style="flex:1" placeholder="https://адрес-сервера" aria-label="Адрес сервера судьи"><input id="jKey" type="password" style="flex:1" placeholder="пароль сервера, если есть" aria-label="Пароль сервера судьи"><button data-a="jConnect">Подключить</button></div>
+        <div class="muted" id="jSt" style="margin-top:6px">Не подключено</div>
+        <div class="bar" style="margin-top:8px"><input id="jLink" style="flex:1" readonly aria-label="Ссылка для судьи"><button data-a="jCopy">Копировать</button><button data-a="jNew">Новая ссылка</button></div>
+        <div class="muted" style="margin-top:6px">Отправьте ссылку судье: по ней он выдаёт роли, ставит фолы и отмечает ночные действия с телефона. Ссылка даёт управление игрой, поэтому не публикуйте её.</div>
+        <div class="bar local-only" style="margin-top:8px"><button data-a="jMove">Перенести игру на сервер</button><span class="muted">Игроки, роли и фото сохранятся на сервере. После этого судья и худ работают без этого устройства.</span></div>
+      </div>
+    </div>
+    <div></div>
+  </section>
+  <section class="page p-grid" data-page="design" aria-label="Дизайн">
+    <div>
+      <div class="box"><h2>Название турнира</h2>
+        <input id="fTitle" style="width:100%" placeholder="Например: Кубок города, 2 тур" aria-label="Название турнира">
+        <div class="ac-row"><span>Акцентный цвет</span><input type="color" id="fAccent" aria-label="Акцентный цвет турнира">
+          <span id="swatches" class="bar" style="gap:4px"></span><button data-a="accentReset">Сбросить</button></div>
+        <div class="muted" style="margin-top:4px">Цвет полосок у названия и таблицы ночей и заголовков сцен. Цвета команд (красные, чёрные) не меняются.</div>
+      </div>
+      <div class="box"><h2>Плашки</h2>
+        <div class="sz" id="sizes"></div>
+        <div class="bar" style="margin-top:8px"><button data-a="uiReset">Сбросить</button><span class="muted">Меняется сразу в оверлее, смотрите в превью. Прозрачность действует на убитых, заголосованных и удалённых.</span></div>
+      </div>
+    </div>
+    <div>
+      <div class="box"><h2>Превью оверлея</h2>
+        <div class="bar"><button id="pvBtn">Показать превью</button><span class="muted">Для проверки. В OBS лучше не включать.</span></div>
+        <div id="pvWrap" style="display:none;margin-top:8px"><div class="pv" id="pv"></div></div>
+      </div>
+    </div>
+  </section>
+  <section class="page p-grid" data-page="obs" aria-label="OBS">
+    <div>
+      <div class="box conn"><h2 id="cTitle">Связь с OBS</h2>
+        <div><span class="dot" id="cDot"></span><span class="st" id="cSt">Подключение…</span></div>
+        <div class="muted" id="cHint" style="margin-top:4px"></div>
+        <div class="fl3 local-only"><input id="cHost" aria-label="Адрес"><input id="cPort" type="number" aria-label="Порт"><input id="cPw" type="password" placeholder="пароль, если включён" aria-label="Пароль WebSocket"><button data-a="reconnect">Подключить</button></div>
+        <div class="disp" id="cDisp"></div>
+      </div>
+    </div>
+    <div>
+      <div class="box"><h2>Худ в OBS через сервер</h2>
+        <div class="muted"><span class="local-only">Укажите адрес и пароль сервера на странице «Судья». </span>Вставьте первую ссылку в URL источника «Браузер» в OBS: худ сам показывает и игру, и экраны победы. Две другие ссылки — отдельные экраны победы, если они ещё нужны. Ссылки показывают роли игроков, поэтому не публикуйте их.</div>
+        <div class="bar" style="margin-top:8px"><input id="hLink" style="flex:1" readonly aria-label="Ссылка на худ"><button data-a="hCopy">Копировать</button></div>
+        <div class="bar" style="margin-top:6px"><input id="rLink" style="flex:1" readonly aria-label="Ссылка на экран победы мирных"><button data-a="rCopy">Копировать</button></div>
+        <div class="bar" style="margin-top:6px"><input id="bLink" style="flex:1" readonly aria-label="Ссылка на экран победы мафии"><button data-a="bCopy">Копировать</button></div>
+        <div class="bar" style="margin-top:6px"><button data-a="hNew">Новые ссылки</button></div>
+      </div>
+    </div>
+  </section>`;
   const $=s=>document.querySelector(s);
   const tb=$('#rows');
   S.seats.forEach((_,i)=>{
@@ -797,9 +1023,13 @@ function startPanel(){
     addNight(){S.nights.push({shot:'',check:'',don:''})},
     delNight(el){S.nights.splice(+el.dataset.k,1);if(!S.nights.length)S.nights.push({shot:'',check:'',don:''})},
     newGame(){if(!confirm('Начать новую игру? Роли, статусы, фолы и ночи сбросятся, рассадка останется.'))return;
-      S.seats.forEach(s=>{s.role='';s.status='alive';s.fouls=0});S.nights=[{shot:'',check:'',don:''}];S.game=(+S.game||0)+1;S.scene='game'},
+      resetGame();S.game=(+S.game||0)+1},
     gamePlus(){S.game=(+S.game||0)+1},
     gameMinus(){S.game=Math.max(0,(+S.game||0)-1)},
+    muSeat(el){const g=S.mu&&S.mu.games.find(x=>x.key===el.dataset.k);if(g)muSeat(g)},
+    muNext(){muStep(1)},
+    muPrev(){muStep(-1)},
+    muForget(){if(confirm('Забыть турнир MafiaUniverse? Рассадка на местах останется.'))S.mu=null},
     foulPlus(el){const s=S.seats[+el.dataset.i];s.fouls=Math.min(4,(+s.fouls||0)+1)},
     foulMinus(el){const s=S.seats[+el.dataset.i];s.fouls=Math.max(0,(+s.fouls||0)-1)},
     wSet(el){const ms=(+el.dataset.m)*60000;Object.assign(S.wait,{running:false,left:ms,total:ms,show:true})},
@@ -814,7 +1044,16 @@ function startPanel(){
     delPerson(el){const id=el.dataset.id,p=person(id);if(!p)return;
       if(!confirm(`Удалить игрока «${p.nick}» из списка турнира?`))return;
       S.roster=S.roster.filter(r=>r.id!==id);S.seats.forEach(s=>{if(s.pid===id)s.pid=''});[id,...roleKeys(id)].forEach(k=>setPhoto(k,null))},
-    delPhoto(el){setPhoto(el.dataset.id,null)}
+    delPhoto(el){setPhoto(el.dataset.id,null)},
+    // список турнира целиком: места освобождаются, фото удаляются; турнир MafiaUniverse остаётся, и импорт заведёт игроков заново
+    delAll(){
+      if(!S.roster.length)return;
+      if(HOSTED&&!Net.online()){alert('Нет связи с сервером, игроки не удалены.');return}
+      if(!confirm(`Удалить всех игроков турнира (${S.roster.length})? Места освободятся, фото игроков удалятся.`))return;
+      const keys=S.roster.flatMap(r=>[r.id,...roleKeys(r.id)]);
+      S.roster=[];S.seats.forEach(s=>{s.pid=''});
+      keys.forEach(k=>{if(!HOSTED||photos[k])setPhoto(k,null)});
+    }
   };
   let pendingFocus=null;
   if(S.nights.some(n=>n.shot==='miss')){S.nights.forEach(n=>{if(n.shot==='miss')n.shot=''});commit()}
@@ -830,8 +1069,9 @@ function startPanel(){
     commit();
   });
   $('#roster').addEventListener('input',e=>{
-    if(!e.target.classList.contains('rn'))return;
-    const p=person(e.target.dataset.id);if(p){p.nick=e.target.value;commit()}
+    const p=person(e.target.dataset.id);if(!p)return;
+    if(e.target.classList.contains('rn')){p.nick=e.target.value;commit()}
+    else if(e.target.classList.contains('rmu')){p.mu=e.target.value.trim();commit()}
   });
   $('#roster').addEventListener('change',async e=>{
     if(e.target.type!=='file')return;
@@ -854,6 +1094,83 @@ function startPanel(){
   $('#fAccent').addEventListener('input',e=>{S.accent=e.target.value;commit()});
 
   $('#fGame').addEventListener('input',e=>{const n=parseInt(e.target.value,10);S.game=isNaN(n)||n<0?0:n;commit()});
+
+  /* ---- рассадка из MafiaUniverse: закладка присылает все игры турнира, пульт сажает игроков выбранного стола ---- */
+  function resetGame(){S.seats.forEach(s=>{s.role='';s.status='alive';s.fouls=0});S.nights=[{shot:'',check:'',don:''}];S.scene='game';Object.assign(S,protocolDefaults())}
+  const muList=()=>S.mu?S.mu.games.filter(g=>g.table===S.mu.table):[];
+  const muTables=()=>S.mu?[...new Set(S.mu.games.map(g=>g.table))].sort((a,b)=>a-b):[];
+  const inProgress=()=>S.seats.some(s=>s.role||s.status!=='alive'||+s.fouls)||S.nights.some(n=>n.shot||n.check||n.don)
+    ||days().some(d=>d.noms.length)||(Array.isArray(S.lh)&&S.lh.some(Boolean))||!!(S.notes||'').trim();
+  // ник на MafiaUniverse хранится отдельно (r.mu), поэтому ник на худе можно менять, а импорт всё равно узнаёт игрока
+  const muNick=p=>(p&&(p.mu||p.nick)||'').trim().toLowerCase();
+  const sameSeats=g=>g.seats.every((nick,i)=>muNick(person(S.seats[i].pid))===nick.toLowerCase());
+  // сначала по нику на MafiaUniverse, потом по нику ещё не привязанного игрока, без учёта регистра; так у знакомых сохраняются фото
+  function personByNick(nick){
+    const k=nick.toLowerCase();
+    let p=S.roster.find(r=>(r.mu||'').trim().toLowerCase()===k)||S.roster.find(r=>!r.mu&&r.nick.trim().toLowerCase()===k);
+    if(!p){p={id:newId(),nick};S.roster.push(p)}
+    p.mu=nick;
+    return p.id;
+  }
+  let muNote='';
+  const notReady=g=>`У игры «${g.title}» на MafiaUniverse ещё нет рассадки. Когда организатор её сделает, нажмите закладку ещё раз.`;
+  function muSeat(g,quiet){
+    if(!g.ready){muNote=notReady(g);return false}
+    if(inProgress()&&!confirm(`Рассадить «${g.title}»? Роли, статусы, фолы и ночи текущей игры сбросятся.`))return false;
+    resetGame();
+    S.seats.forEach((s,i)=>{s.pid=g.seats[i]?personByNick(g.seats[i]):''});
+    // номер игры — порядковый номер игры за этим столом: тур 3 становится «Игра 3», первый финал после 14 туров — «Игра 15»
+    const k=muList().indexOf(g);if(k>=0)S.game=k+1;
+    S.mu.cur=g.key;
+    if(!quiet)muNote=`Рассажено: ${g.title}.`;
+    return true;
+  }
+  function muStep(d){
+    const list=muList();if(!list.length){muNote='Сначала выберите стол.';return}
+    const k=list.findIndex(g=>g.key===S.mu.cur),g=list[k<0?(d>0?0:list.length-1):k+d];
+    if(g)muSeat(g);else muNote=d>0?'Это последняя игра стола.':'Это первая игра стола.';
+  }
+  // первая несыгранная игра стола: если её рассадка уже на местах, ничего не меняется
+  function muCurrent(){
+    const g=muList().find(x=>!x.ended);
+    if(!g)return 'Все игры этого стола уже сыграны.';
+    if(!g.ready)return notReady(g);
+    if(g.key===S.mu.cur&&sameSeats(g))return `Рассадка совпадает: ${g.title}.`;
+    return muSeat(g,true)?`Рассажено: ${g.title}.`:'Рассадка не изменилась.';
+  }
+  let muSig='';
+  muTake=d=>{
+    const sig=JSON.stringify(d);if(sig===muSig)return; // закладка повторяет сообщение, пока пульт не ответит
+    muSig=sig;
+    const was=S.mu&&S.mu.id===d.id?S.mu:null;
+    S.mu=Object.assign(d,{table:was?was.table:0,cur:was?was.cur:'',at:Date.now()});
+    const tables=muTables();
+    if(!tables.includes(S.mu.table))S.mu.table=tables.length===1?tables[0]:0;
+    muNote=`Получено игр: ${d.games.length}. `+(S.mu.table?muCurrent():'Выберите свой стол.');
+    commit();
+  };
+  $('#mu').addEventListener('change',e=>{
+    if(e.target.id!=='muTable'||!S.mu)return;
+    S.mu.table=+e.target.value;
+    muNote=S.mu.table?muCurrent():'';
+    commit();
+  });
+  if(HOSTED){
+    const bm=$('#muBm');bm.href=muBookmarklet(BASE+'/panel');
+    bm.addEventListener('click',e=>{e.preventDefault();alert('Эту кнопку нужно перетащить на панель закладок браузера, а нажимать уже на сайте MafiaUniverse.')});
+  }
+  function renderMu(){
+    const box=$('#mu');
+    if(!S.mu){box.innerHTML=`<div class="muted">Турнир ещё не загружен.</div>${muNote?`<div class="muted" style="margin-top:4px">${esc(muNote)}</div>`:''}`;return}
+    const list=muList();
+    const opts=`<option value="0">— выберите —</option>`+muTables().map(t=>`<option value="${t}"${t===S.mu.table?' selected':''}>Стол ${t}</option>`).join('');
+    box.innerHTML=`<div><b>${esc(S.mu.title||'Турнир')}</b> <span class="muted">· игр: ${S.mu.games.length}${S.mu.url?` · <a href="${esc(S.mu.url)}" target="_blank" rel="noopener" style="color:inherit">MafiaUniverse</a>`:''}</span></div>
+      <div class="bar" style="margin-top:6px">Стол <select id="muTable" aria-label="Стол на MafiaUniverse">${opts}</select>
+        <button data-a="muPrev">← Предыдущая</button><button data-a="muNext">Следующая →</button><button data-a="muForget" class="warn">Забыть турнир</button></div>
+      ${muNote?`<div class="muted" style="margin-top:6px" role="status">${esc(muNote)}</div>`:''}
+      ${list.length?`<table class="mt">${list.map(g=>`<tr class="${g.key===S.mu.cur?'cur':''}"><td>${esc(g.round)}</td><td class="muted">${esc(g.judge)}</td><td>${g.ended?'<span class="ok">сыграна</span>':g.ready?'':'<span class="muted">нет рассадки</span>'}</td>
+        <td class="act"><button data-a="muSeat" data-k="${esc(g.key)}"${g.ready?'':' disabled'}>${g.key===S.mu.cur?'Рассадить заново':'Рассадить'}</button></td></tr>`).join('')}</table>`:''}`;
+  }
   $('#fFouls').addEventListener('change',e=>{S.showFouls=e.target.checked;commit()});
 
   let pvOn=false;
@@ -864,6 +1181,13 @@ function startPanel(){
     if(!pvOn)pv.innerHTML='';
   });
   function fitPv(){const pv=$('#pv'),f=pv.querySelector('iframe');if(f)f.style.transform=`scale(${pv.clientWidth/1920})`}
+  function showTab(t){
+    document.querySelectorAll('.page').forEach(p=>p.classList.toggle('on',p.dataset.page===t));
+    document.querySelectorAll('.p-tabs a').forEach(a=>{const on=a.dataset.tab===t;a.classList.toggle('on',on);if(on)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+    fitPv(); // у скрытой страницы превью нулевой ширины
+  }
+  addEventListener('hashchange',()=>showTab(tabFromHash()));
+  showTab(tabFromHash());
   addEventListener('resize',fitPv);
 
   const setVal=(el,v)=>{if(document.activeElement!==el&&el.value!==String(v))el.value=v};
@@ -886,10 +1210,12 @@ function startPanel(){
       else{sel.style.display='';kl.textContent='';setVal(sel,s.status==='voted'||s.status==='removed'?s.status:'alive')}
       fn.textContent=fo;fn.className='fn'+(fo>=4?' f4':fo===3?' f3':'');
     });
+    renderMu();
     const scene=SCENES.includes(S.scene)?S.scene:'game';
     $('#scenes').querySelectorAll('button').forEach(b=>{const on=b.dataset.s===scene;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on)});
     setVal($('#fTitle'),S.title);setVal($('#fGame'),S.game);setVal($('#fAccent'),okColor(S.accent)?S.accent.toLowerCase():ACCENT_DEF);$('#fFouls').checked=S.showFouls!==false;
-    UI_FIELDS.forEach(([k,,,,,un])=>{setVal($('#u_'+k),S.ui[k]);$('#o_'+k).textContent=(un==='×'?(+S.ui[k]).toFixed(2):S.ui[k])+(un==='×'?'×':' px')});
+    // в старых играх нет новых настроек, поэтому для них показывается значение по умолчанию
+    UI_FIELDS.forEach(([k,,,,,un])=>{const v=S.ui[k]??UI_DEF[k];setVal($('#u_'+k),v);$('#o_'+k).textContent=un==='×'?(+v).toFixed(2)+'×':v+(un==='%'?'%':' px')});
 
     const sig=S.roster.map(r=>r.id).join(',');
     const rl=$('#roster');
@@ -901,12 +1227,14 @@ function startPanel(){
         <div class="rm"><div class="rt"><input class="rn" data-id="${r.id}" aria-label="Ник" style="flex:1">
           <span class="seat"></span>
           <button data-a="delPerson" data-id="${r.id}" class="warn" aria-label="Удалить игрока">Удалить</button></div>
+          <div class="rt hosted-only"><input class="rmu" data-id="${r.id}" placeholder="ник на MafiaUniverse" aria-label="Ник на MafiaUniverse" title="По этому нику импорт находит игрока, а на худе показывается ник выше"></div>
           <div class="rslots">${Object.keys(ROLES).map(k=>`<div class="rslot"><label class="thumb sm" data-k="${r.id}.${k}" title="Фото для роли «${ROLES[k].t}»"><input type="file" accept="image/*" data-id="${r.id}.${k}" aria-label="Фото для роли ${ROLES[k].t}"><span>${ROLES[k].t.slice(0,3)}</span></label><button data-a="delPhoto" data-id="${r.id}.${k}" title="Удалить фото" aria-label="Удалить фото для роли ${ROLES[k].t}">×</button></div>`).join('')}</div></div></div>`).join('')
         :'<div class="muted">Список пуст. Добавьте игроков кнопкой ниже.</div>';
     }
     rl.querySelectorAll('.rr').forEach(el=>{
       const id=el.dataset.id,p=person(id);if(!p)return;
       setVal(el.querySelector('.rn'),p.nick);
+      setVal(el.querySelector('.rmu'),p.mu||'');
       el.querySelectorAll('label.thumb').forEach(th=>{
         const ph=photos[th.dataset.k]||null;
         if(th._p!==ph){th._p=ph;th.style.backgroundImage=ph?`url("${ph}")`:'none';th.classList.toggle('has',!!ph)}
@@ -1031,7 +1359,8 @@ function startPanel(){
     $('#cTitle').textContent='Связь с сервером';
     Object.assign(ST,{ok:['ok','Подключено к серверу',''],off:['bad','Нет связи с сервером','Изменения отправятся, когда связь вернётся.']});
   }
-  const showNet=s=>{const x=ST[s]||ST.off;$('#cDot').className='dot '+x[0];$('#cSt').textContent=x[1];$('#cHint').textContent=x[2]};
+  // связь видна в шапке на любой странице, а подробности — на странице «OBS»
+  const showNet=s=>{const x=ST[s]||ST.off;$('#cDot').className='dot '+x[0];$('#cSt').textContent=x[1];$('#cHint').textContent=x[2];$('#hDot').className='dot '+x[0];$('#hSt').textContent=x[1]};
   Net.onStatus(showNet);showNet(Net.status);
   $('#cHost').value=Net.cfg.host;$('#cPort').value=Net.cfg.port;$('#cPw').value=Net.cfg.pw;
   A.reconnect=()=>{Net.setCfg({host:$('#cHost').value.trim()||'localhost',port:+$('#cPort').value||4455,pw:$('#cPw').value})};
@@ -1041,13 +1370,14 @@ function startPanel(){
   publish(true);
   Judge.connect();
   Net.send({kind:'ping'});
+  if(muInbox){const d=muInbox;muInbox=null;muTake(d)} // закладка успела прислать рассадку, пока пульт ждал пароль
 }
 
 /* ---- пульт на сервере: игру присылает сервер, сюда приходят и правки судьи ---- */
 function startHosted(){
   const SESSION='mafiaHudServerKey';
   const clone=o=>JSON.parse(JSON.stringify(o));
-  let base=null,seq=0,started=false;
+  let base=null,sent=null,seq=0,started=false;
   const savedKey=()=>{try{return sessionStorage.getItem(SESSION)||''}catch(e){return ''}};
   const saveKey=k=>{try{k?sessionStorage.setItem(SESSION,k):sessionStorage.removeItem(SESSION)}catch(e){}};
   const open=key=>{saveKey(key);Net.setRelay({url:BASE,room:'',role:'host',key})};
@@ -1061,10 +1391,12 @@ function startHosted(){
     document.getElementById('login').onsubmit=e=>{e.preventDefault();open(document.getElementById('lKey').value)};
   }
   // Изменения считаются доставленными, когда сервер подтвердил последнее из них, а до этого повторяются.
+  // Отправленное, но не подтверждённое тоже учитывается: иначе возврат поля к прежнему значению (роль выдали и сразу сняли) не дошёл бы до сервера.
   syncGame=()=>{
     if(!Net.online())return;
-    const ops=diffState(base,S);
-    if(ops.length)Net.send({kind:'patch',seq:++seq,ops});
+    const ops=diffState(base,S),key=op=>JSON.stringify(op[0]);
+    if(sent)diffState(sent,S).forEach(op=>{if(!ops.some(o=>key(o)===key(op)))ops.push(op)});
+    if(ops.length){Net.send({kind:'patch',seq:++seq,ops});sent=clone(S)}
   };
   Net.onStatus(st=>{
     if(st==='badkey'){saveKey('');if(started)location.reload();else login('Неверный пароль')}
@@ -1074,12 +1406,12 @@ function startHosted(){
     if(m.kind==='game'&&m.hello){
       const unsent=base?diffState(base,S):[];
       Object.keys(photos).forEach(k=>delete photos[k]);
-      S=m.S;base=clone(S);seq=0;
+      S=m.S;base=clone(S);sent=null;seq=0;
       applyOps(S,unsent);
       if(!started){started=true;startPanel()}
       syncGame();renderFn();
     }
-    else if(m.kind==='game'&&m.ack===seq){S=m.S;base=clone(S);renderFn()}
+    else if(m.kind==='game'&&m.ack===seq){S=m.S;base=clone(S);sent=null;renderFn()}
     else if(m.kind==='photo'){if(m.data)photos[m.pid]=m.data;else delete photos[m.pid];renderFn()}
     else if(m.kind==='peers'&&started)document.getElementById('jSt').textContent=m.judge?'Судья на связи':'Судья ещё не зашёл';
   });

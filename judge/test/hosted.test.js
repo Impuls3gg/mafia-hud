@@ -142,6 +142,102 @@ test('пульт переключает худ между игрой и экра
   assert.ok(await until(() => view(screen).scene === 'game'), 'худ не переключился на game');
 });
 
+test('протокол дня: выставления, голоса, таймер речи, лучший ход и заметки', async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms } = await openGame(t, server);
+  const judge = await joinJudge(t, server, rooms);
+  const screen = await joinScreen(t, server, rooms);
+  const state = () => lastOf(judge, 'state');
+  const cmd = c => judge.ws.send(JSON.stringify({ kind: 'cmd', ...c }));
+  assert.deepEqual(state().days, [{ noms: [], stage: 'vote', revote: [], tied: [], out: [] }], 'игра без протокола получает пустой первый день');
+
+  cmd({ a: 'nom', i: 3 }); cmd({ a: 'nom', i: 7 }); cmd({ a: 'nom', i: 3 }); cmd({ a: 'nom', i: 3 });
+  assert.ok(await until(() => state().days[0].noms.map(n => n.i).join() === '7,3'), 'повторное выставление снимает игрока, порядок сохраняется');
+  cmd({ a: 'votes', i: 7, d: 1 }); cmd({ a: 'votes', i: 7, d: 1 }); cmd({ a: 'votes', i: 3, d: -1 });
+  assert.ok(await until(() => state().days[0].noms[0].v === 2 && state().days[0].noms[1].v === 0));
+  assert.ok(await until(() => view(screen).noms.length === 2 && view(screen).noms[0].v === 2), 'выставленные не дошли до худа');
+
+  cmd({ a: 'timer', op: 'speak', v: '4' });
+  assert.ok(await until(() => state().timer.speaker === '4' && state().timer.running), 'речь не началась');
+  assert.ok(await until(() => view(screen).timer.speaker === '4'));
+  await sleep(300);
+  cmd({ a: 'timer', op: 'pause' });
+  assert.ok(await until(() => !state().timer.running));
+  assert.ok(state().timer.remain < 60000 && state().timer.remain > 55000, 'таймер не отсчитывал время');
+  cmd({ a: 'timer', op: 'set', ms: 30000 });
+  assert.ok(await until(() => state().timer.total === 30000 && state().timer.remain === 30000));
+  cmd({ a: 'timer', op: 'speak', v: '99' }); // несуществующее место не принимается
+  cmd({ a: 'day' });
+  assert.ok(await until(() => state().days.length === 2 && state().timer.speaker === ''), 'новый день не начался');
+  assert.deepEqual(view(screen).noms, [], 'на худе выставленные нового дня');
+
+  cmd({ a: 'night', k: 0, f: 'shot', v: '5' });
+  cmd({ a: 'lh', k: 0, v: '1' }); cmd({ a: 'lh', k: 2, v: '8' }); cmd({ a: 'lh', k: 5, v: '2' });
+  assert.ok(await until(() => state().lh.join() === '1,,8' && state().pu === '5'), 'лучший ход не записан');
+  assert.deepEqual(view(screen).lh, { pu: '5', seats: ['1', '', '8'] });
+  // ячейка первого убиенного в таблице судьи, как на MafiaUniverse: игрок становится первым убиенным,
+  // берутся три разных существующих номера, лишние и повторы отбрасываются
+  cmd({ a: 'lhset', i: 2, v: ['4', '4', '0', '99', '7', '9'] });
+  assert.ok(await until(() => state().pu === '2' && state().lh.join() === '4,0,7'), 'лучший ход из ячейки не записан');
+  assert.ok(await until(() => view(screen).lh.pu === '2'), 'худ не узнал первого убиенного');
+  cmd({ a: 'lhset', i: 2, v: [] });
+  assert.ok(await until(() => state().lh.join() === ',,' && state().pu === '5'), 'после очистки первым убиенным снова считается отстрел первой ночи');
+
+  cmd({ a: 'notes', v: 'Игрок 3 сорвал речь' });
+  assert.ok(await until(() => state().notes === 'Игрок 3 сорвал речь'));
+  cmd({ a: 'notes', v: 'x'.repeat(5000) });
+  assert.ok(await until(() => state().notes.length === 2000), 'заметки не ограничены по длине');
+});
+
+test('голосование: итог, переголосование при равенстве и вопрос «подняли/оставили»', async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms } = await openGame(t, server);
+  const judge = await joinJudge(t, server, rooms);
+  const screen = await joinScreen(t, server, rooms);
+  const state = () => lastOf(judge, 'state');
+  const day = () => state().days.at(-1);
+  const cmd = c => judge.ws.send(JSON.stringify({ kind: 'cmd', ...c }));
+  const lifted = () => view(screen).noms.map(n => n.i).join();
+
+  // день 1: явный лидер покидает стол
+  cmd({ a: 'nom', i: 1 }); cmd({ a: 'nom', i: 4 });
+  cmd({ a: 'vote', i: 1, v: 6 }); cmd({ a: 'vote', i: 4, v: 3 }); cmd({ a: 'vote', i: 4, v: 11 }); // 11 голосов не бывает
+  assert.ok(await until(() => day().noms.map(n => n.v).join() === '6,3'));
+  cmd({ a: 'voteEnd' });
+  assert.ok(await until(() => day().stage === 'done' && day().out.join() === '1'), 'лидер не покинул стол');
+  assert.equal(state().seats[1].st, 'voted');
+  assert.ok(await until(() => lifted() === ''), 'после итога плашки опускаются');
+  cmd({ a: 'nom', i: 7 }); // после итога выставлять нельзя
+  cmd({ a: 'voteReset' });
+  assert.ok(await until(() => day().stage === 'vote' && state().seats[1].st === 'alive'), '«Изменить» не вернул игрока');
+  assert.equal(day().noms.length, 2);
+
+  // день 2: поровну → переголосование → снова поровну → подняли
+  cmd({ a: 'day' });
+  cmd({ a: 'nom', i: 2 }); cmd({ a: 'nom', i: 5 }); cmd({ a: 'nom', i: 8 });
+  cmd({ a: 'vote', i: 2, v: 4 }); cmd({ a: 'vote', i: 5, v: 4 }); cmd({ a: 'vote', i: 8, v: 1 });
+  cmd({ a: 'voteEnd' });
+  assert.ok(await until(() => day().stage === 'revote' && day().revote.map(n => n.i).join() === '2,5'), 'нет переголосования между равными');
+  assert.ok(await until(() => lifted() === '2,5'), 'на худе приподняты не участники переголосования');
+  cmd({ a: 'vote', i: 8, v: 9 }); // не участник переголосования
+  cmd({ a: 'vote', i: 2, v: 5 }); cmd({ a: 'vote', i: 5, v: 5 });
+  cmd({ a: 'voteEnd' });
+  assert.ok(await until(() => day().stage === 'lift' && day().tied.join() === '2,5'), 'нет вопроса «подняли/оставили»');
+  cmd({ a: 'lift', v: 'up' });
+  assert.ok(await until(() => day().out.join() === '2,5' && state().seats[2].st === 'voted' && state().seats[5].st === 'voted'), '«Подняли» не убрал обоих');
+
+  // день 3: снова поровну дважды → оставили
+  cmd({ a: 'day' });
+  cmd({ a: 'nom', i: 0 }); cmd({ a: 'nom', i: 9 });
+  cmd({ a: 'vote', i: 0, v: 3 }); cmd({ a: 'vote', i: 9, v: 3 }); cmd({ a: 'voteEnd' });
+  assert.ok(await until(() => day().stage === 'revote'));
+  cmd({ a: 'vote', i: 0, v: 2 }); cmd({ a: 'vote', i: 9, v: 2 }); cmd({ a: 'voteEnd' });
+  assert.ok(await until(() => day().stage === 'lift'));
+  cmd({ a: 'lift', v: 'stay' });
+  assert.ok(await until(() => day().stage === 'done' && day().out.length === 0), '«Оставили» должен оставить всех');
+  assert.equal(state().seats[0].st, 'alive');
+});
+
 test('неверные сообщения не ломают сервер и игру', async t => {
   const server = await startServer(t, SECRET);
   const { host, rooms, send } = await openGame(t, server);
@@ -209,6 +305,105 @@ test('пульт с сервера открывается заново на др
   assert.ok(await until(() => phone.run("document.querySelector('#rows .fn').textContent==='2'")), 'игра не восстановилась');
   assert.equal(await phone.run("document.querySelector('.rn').value"), 'Алиса');
   assert.equal(await phone.run("document.querySelector('#rows [data-f=role]').value"), 'mafia');
+});
+
+// Повторяет разметку страницы «Игры» турнира на MafiaUniverse; ники выдуманные.
+const muGame = (key, title, ended, nicks) => `<div class="box_game_res mx-2 my-2 " id="game_${key}">
+  <div class="win_ border-0 d-flex justify-content-between"><div></div><div class=""><a class="text-white" href="/Games/Details/${key}">${title}</a></div><div class="caneditgame"></div></div>
+  <div class="win_ border-0 ">Судья ${key} </div><div class="win_ border-0 "> 13-11-2026 13:56 </div>
+  <table class="ended_${ended}"><tbody>${nicks.map((nick, i) => `<tr class=" "><td> ${i + 1} </td><td class="text-start"> ${nick} </td><td><div class="text-center"></div></td><td></td></tr>`).join('')}</tbody></table></div>`;
+const muNicks = (prefix, first) => [first || `${prefix}1`, ...Array.from({ length: 9 }, (_, i) => `${prefix}${i + 2}`)];
+const MU_PAGE = `<!doctype html><html><head><title>Результаты игр Тестовый кубок - MafiaUniverse</title></head><body><h4>Результаты игр Тестовый кубок</h4>
+  ${muGame('g11', 'Тур 1 стол 1', true, muNicks('А'))}${muGame('g12', 'Тур 1 стол 2', true, muNicks('Б'))}
+  ${muGame('g21', 'Тур 2 стол 1', false, muNicks('В', 'Альфа'))}${muGame('g22', 'Тур 2 стол 2', false, muNicks('Г', 'Tom &amp; Jerry'))}
+  ${muGame('f11', 'Финал 1 стол 1', false, muNicks('Д'))}${muGame('f21', 'Финал 2 стол 1', false, Array(10).fill(''))}</body></html>`;
+
+test('рассадка из MafiaUniverse: стол, номер игры и переход между играми', { skip }, async t => {
+  const server = await startServer(t, SECRET);
+  const watcher = await openGame(t, server);
+  const stored = () => lastOf(watcher.host, 'game').S;
+  const page = await openPage(t, `${server.http}/panel`);
+  await until(() => page.run("!!document.getElementById('login')"), 20000);
+  await page.run(`document.getElementById('lKey').value='${SECRET}';document.getElementById('login').requestSubmit()`);
+  assert.ok(await until(() => page.run("!!document.getElementById('mu')"), 20000), 'пульт не открылся');
+  await page.run('window.confirm=()=>true');
+
+  const parsed = await page.run(`muParse(new DOMParser().parseFromString(${JSON.stringify(MU_PAGE)},'text/html'),'https://mafiauniverse.org/Tournaments/GamesList/777')`);
+  assert.equal(parsed.id, '777');
+  assert.equal(parsed.title, 'Тестовый кубок');
+  assert.equal(parsed.games.length, 6);
+  assert.deepEqual(parsed.games[0], { key: 'g11', title: 'Тур 1 стол 1', judge: 'Судья g11', date: '13-11-2026 13:56', ended: true, seats: muNicks('А') });
+  assert.equal(parsed.games[3].seats[0], 'Tom & Jerry');
+  // закладка — это код, который должен собраться
+  assert.equal(await page.run("new Function(decodeURIComponent(document.getElementById('muBm').href.slice('javascript:'.length)))&&true"), true);
+
+  // знакомый игрок с тем же ником (без учёта регистра) остаётся прежним, чтобы сохранились его фото
+  await page.run("{const i=document.querySelector('.rn');i.value='альфа';i.dispatchEvent(new Event('input',{bubbles:true}))}");
+  assert.ok(await until(() => stored().roster[0].nick === 'альфа'));
+  const alpha = stored().roster[0].id;
+
+  await page.run(`muTake(muClean(${JSON.stringify(parsed)}))`);
+  assert.ok(await until(() => stored().mu?.games.length === 6), 'турнир не сохранился на сервере');
+  assert.equal(stored().mu.table, 0, 'столов два, поэтому стол выбирают вручную');
+
+  const pickTable = n => page.run(`{const s=document.getElementById('muTable');s.value='${n}';s.dispatchEvent(new Event('change',{bubbles:true}))}`);
+  const nicks = () => { const S = stored(); return S.seats.map(s => S.roster.find(r => r.id === s.pid)?.nick || ''); };
+  await pickTable(1);
+  assert.ok(await until(() => stored().mu.cur === 'g21'), 'не рассажена первая несыгранная игра стола');
+  assert.deepEqual(nicks(), ['альфа', ...muNicks('В').slice(1)]);
+  assert.equal(stored().seats[0].pid, alpha);
+  assert.equal(stored().game, 2);
+
+  // ручная правка места остаётся возможной
+  await page.run("{const s=document.querySelector('#rows [data-f=role]');s.value='don';s.dispatchEvent(new Event('change',{bubbles:true}))}");
+  assert.ok(await until(() => stored().seats[0].role === 'don'));
+
+  await page.run("document.querySelector('[data-a=muNext]').click()");
+  assert.ok(await until(() => stored().mu.cur === 'f11'), 'не перешёл к следующей игре');
+  assert.equal(stored().game, 3, 'финал после двух туров за столом — третья игра, без отдельной подписи');
+  assert.equal(stored().seats[0].role, '', 'новая рассадка сбрасывает роли прошлой игры');
+  assert.equal(await page.run("document.querySelector('#mu tr.cur td').textContent"), 'Финал 1');
+  // у второго финала ещё нет рассадки: пульт остаётся на прежней игре и объясняет почему
+  await page.run("document.querySelector('[data-a=muNext]').click()");
+  assert.ok(await until(() => page.run("document.getElementById('mu').textContent.includes('ещё нет рассадки')")), 'нет сообщения о пустой рассадке');
+  assert.equal(stored().mu.cur, 'f11');
+  assert.equal(await page.run("document.querySelector('[data-a=muSeat][data-k=f21]').disabled"), true);
+
+  await pickTable(2);
+  assert.ok(await until(() => stored().mu.cur === 'g22'));
+  assert.equal(nicks()[0], 'Tom & Jerry');
+  assert.equal(stored().game, 2);
+  // номер игры по-прежнему можно поменять вручную
+  await page.run("document.querySelector('[data-a=gamePlus]').click()");
+  assert.ok(await until(() => stored().game === 3));
+
+  // страницы пульта: открывается та, что указана в адресе, остальные скрыты
+  await page.run("location.hash='design'");
+  assert.ok(await until(() => page.run("document.querySelector('[data-page=design]').classList.contains('on')&&getComputedStyle(document.querySelector('[data-page=game]')).display==='none'")), 'страница не переключилась');
+  assert.equal(await page.run("document.querySelector('.p-tabs a.on').textContent"), 'Дизайн');
+  // прозрачность выбывших — обычная настройка плашек
+  await page.run("{const r=document.getElementById('u_ot');r.value='80';r.dispatchEvent(new Event('input',{bubbles:true}))}");
+  assert.ok(await until(() => stored().ui.ot === 80), 'прозрачность не сохранилась');
+  assert.equal(await page.run("document.getElementById('o_ot').textContent"), '80%');
+
+  // ник на худе можно поменять: импорт узнаёт игрока по нику на MafiaUniverse и не заводит его заново
+  assert.equal(stored().roster.find(r => r.id === alpha).mu, 'Альфа', 'знакомый игрок привязан к нику на MafiaUniverse');
+  const v2 = stored().roster.find(r => r.nick === 'В2');
+  assert.equal(v2.mu, 'В2');
+  await page.run(`{const i=document.querySelector('.rn[data-id="${v2.id}"]');i.value='Виталий';i.dispatchEvent(new Event('input',{bubbles:true}))}`);
+  assert.ok(await until(() => stored().roster.find(r => r.id === v2.id).nick === 'Виталий'));
+  assert.equal(await page.run(`document.querySelector('.rmu[data-id="${v2.id}"]').value`), 'В2');
+  const count = stored().roster.length;
+  await pickTable(1);
+  assert.ok(await until(() => stored().mu.cur === 'g21'));
+  assert.equal(stored().seats[1].pid, v2.id);
+  assert.equal(nicks()[1], 'Виталий');
+  assert.equal(stored().roster.length, count, 'игрок задвоился');
+
+  // «Удалить всех игроков» очищает список и места
+  await page.run("document.querySelector('[data-a=delAll]').click()");
+  assert.ok(await until(() => stored().roster.length === 0 && stored().seats.every(s => s.pid === '')), 'игроки не удалились');
+  assert.equal(await page.run("document.getElementById('roster').textContent.includes('Список пуст')"), true);
 });
 
 test('изменения пульта без связи доходят, когда сервер вернулся', { skip }, async t => {
