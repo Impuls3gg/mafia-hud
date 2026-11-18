@@ -1,28 +1,41 @@
-// Сервер судьи: отдаёт страницы для телефона и OBS, хранит игру и пересылает сообщения между пультом, судьёй и экранами.
-// Игра хранится, только если задан пароль сервера. Без него сервер лишь пересылает сообщения. Зависимостей нет, нужен только Node.js.
+// HTTP и WebSocket для пульта, судьи и источников OBS.
 const http = require('http');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const { createGame } = require('./game');
+const { fetchShow } = require('./mu');
 
 const PORT = +process.env.PORT || 8787;
-const SECRET = process.env.JUDGE_SECRET || ''; // пароль сервера; без него комнаты может создавать любой
+const SECRET = process.env.JUDGE_SECRET || '';
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
-const PAGES = { '/': 'judge.html', '/hud': 'mafia-hud.html', '/win-civilians': 'win-civilians.html', '/win-mafia': 'win-mafia.html' };
-if (SECRET) PAGES['/panel'] = 'mafia-hud.html';
-const ROLES = ['panel', 'judge', 'screen', 'host']; // host — пульт, открытый с сервера
+const PAGES = {
+  '/': 'judge.html',
+  '/panel': 'mafia-hud.html',
+  '/hud': 'mafia-hud.html',
+  '/win-civilians': 'mafia-hud.html',
+  '/win-mafia': 'mafia-hud.html'
+};
+const ASSETS = {
+  '/assets/style.css': 'hud/style.css',
+  '/assets/rules.js': 'hud/rules.js',
+  '/assets/client.js': 'hud/client.js',
+  '/assets/state.js': 'hud/state.js',
+  '/assets/screen.js': 'hud/screen.js',
+  '/assets/panel.js': 'hud/panel.js'
+};
+const ROLES = ['judge', 'screen', 'host'];
 const HOSTS = 'hosts'; // такие пульты не привязаны к комнате
 const MAX_MESSAGE = 1024 * 1024; // фото игроков идут одним сообщением
 const MAX_PER_ROOM = 8;
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
-const CLOSE_BAD_PASSWORD = 4401, CLOSE_NO_ROOM = 4403, CLOSE_MOVED = 4409, CLOSE_RELOAD = 4000;
+const CLOSE_BAD_PASSWORD = 4401, CLOSE_NO_ROOM = 4403, CLOSE_RELOAD = 4000;
 const FROM_SERVER = { app: 'mafiahud', from: 'server' };
 const rooms = new Map(); // код комнаты -> Set подключений
 
 // На сервере страницы лежат рядом, а в репозитории файлы худа находятся на уровень выше.
 const pagePath = name => [__dirname, path.join(__dirname, '..')].map(dir => path.join(dir, name)).find(fs.existsSync);
-const game = SECRET ? createGame(DATA_DIR, pagePath('mafia-hud.html')) : null;
+const game = SECRET ? createGame(DATA_DIR, pagePath('hud/rules.js')) : null;
 
 function frame(sock, opcode, payload) {
   if (sock.destroyed) return;
@@ -49,29 +62,17 @@ function closeWith(sock, code) {
 const digest = text => crypto.createHash('sha256').update(text).digest();
 const passwordOk = text => crypto.timingSafeEqual(digest(text), digest(SECRET));
 
-// Комнату создаёт только пульт с паролем, судья и экраны входят в уже созданную. В комнатах хранимой игры пульт заменяет сам сервер.
 function refusal(role, room, password) {
   if (role === 'host') return game && passwordOk(password) ? 0 : CLOSE_BAD_PASSWORD;
-  if (SECRET && role === 'panel' && !passwordOk(password)) return CLOSE_BAD_PASSWORD;
-  if (game?.owns(room)) {
-    if (role === 'panel') return CLOSE_MOVED;
-    return room === game.rooms()[role === 'judge' ? 'room' : 'hud'] ? 0 : CLOSE_NO_ROOM;
-  }
-  if (SECRET && role !== 'panel' && !rooms.has(room)) return CLOSE_NO_ROOM;
-  return 0;
+  const key = role === 'judge' ? 'room' : 'hud';
+  return game?.rooms()[key] === room ? 0 : CLOSE_NO_ROOM;
 }
 
 function sendPeers(room) {
-  const list = members(room);
-  const owned = !!game?.owns(room);
-  const judges = list.filter(s => s.role === 'judge').length;
-  const msg = JSON.stringify({
-    kind: 'peers',
-    panel: owned ? 1 : list.filter(s => s.role === 'panel').length,
-    judge: judges
-  });
-  list.forEach(s => sendText(s, msg));
-  if (owned && room === game.rooms().room) members(HOSTS).forEach(s => send(s, { kind: 'peers', judge: judges }));
+  if (room !== game?.rooms().room) return;
+  const judges = members(room, 'judge');
+  judges.forEach(sock => send(sock, { kind: 'peers', panel: 1 }));
+  members(HOSTS).forEach(sock => send(sock, { kind: 'peers', judge: judges.length }));
 }
 
 function leave(sock) {
@@ -82,7 +83,9 @@ function leave(sock) {
 }
 
 function sendPhotos(sock) {
-  game.seatedPhotos().forEach(pid => {
+  const visible = new Set(game.seatedPhotos());
+  for (const id of sock.photos) if (!visible.has(id)) sock.photos.delete(id);
+  visible.forEach(pid => {
     if (sock.photos.has(pid)) return;
     sock.photos.add(pid);
     send(sock, { kind: 'photo', pid, data: game.photo(pid) });
@@ -107,7 +110,6 @@ function changeRooms(before) {
     if (old && !game.owns(old)) members(old).forEach(s => closeWith(s, CLOSE_NO_ROOM));
   }
   for (const room of [game.rooms().room, game.rooms().hud]) {
-    members(room, 'panel').forEach(s => closeWith(s, CLOSE_MOVED));
     sendPeers(room);
   }
 }
@@ -115,8 +117,8 @@ function changeRooms(before) {
 function fromHost(sock, message) {
   const before = { ...game.rooms() };
   if (message.kind === 'patch' && Array.isArray(message.ops)) {
-    sock.seq = message.seq;
     game.patch(message.ops);
+    sock.seq = message.seq;
     if (before.room !== game.rooms().room || before.hud !== game.rooms().hud) changeRooms(before);
     publish();
   } else if (message.kind === 'photo' && game.setPhoto(message.pid, message.data)) {
@@ -131,10 +133,22 @@ function fromHost(sock, message) {
     members(HOSTS).forEach(s => { if (s !== sock) closeWith(s, CLOSE_RELOAD); });
     publish();
     send(sock, { kind: 'moved' });
-  } else if (message.kind === 'ping') members(game.rooms().hud, 'screen').forEach(s => send(s, { kind: 'ping' }));
+  } else if (message.kind === 'muFetch') muFetch(sock, message.what, message.id);
+  else if (message.kind === 'ping') members(game.rooms().hud, 'screen').forEach(s => send(s, { kind: 'ping' }));
 }
 
-function fromPlayer(sock, message, text) {
+// итоги игры или таблица турнира с MafiaUniverse: сервер скачивает страницу, сохраняет итоги в игре и рассылает экранам
+const fetching = new Set();
+function muFetch(sock, what, id) {
+  if (!['game', 'results'].includes(what) || fetching.has(what)) return;
+  fetching.add(what);
+  fetchShow(what, id)
+    .then(data => { game.setShow(what, data); publish(); send(sock, { kind: 'muFetched', what, ok: true, rows: data.rows.length, title: data.title }); })
+    .catch(error => send(sock, { kind: 'muFetched', what, ok: false, error: error.message }))
+    .finally(() => fetching.delete(what));
+}
+
+function fromPlayer(sock, message) {
   if (sock.role === 'judge') {
     if (message.kind === 'hello') sendText(sock, JSON.stringify(game.judgeState()));
     else if (message.kind === 'cmd' && game.command(message)) publish();
@@ -144,23 +158,22 @@ function fromPlayer(sock, message, text) {
     sock.photos.clear();
     sendView(sock);
   }
-  if (message.kind === 'hello' || message.kind === 'pong') members(HOSTS).forEach(s => sendText(s, text));
+  if ((message.kind === 'hello' || message.kind === 'pong')
+    && ['overlay', 'red', 'black'].includes(message.mode)) {
+    const presence = { kind: message.kind, mode: message.mode };
+    members(HOSTS).forEach(host => send(host, presence));
+  }
 }
 
 function onMessage(sock, text) {
-  if (sock.role === 'host' || game?.owns(sock.room)) {
-    let message;
-    try {
-      message = JSON.parse(text);
-      if (sock.role === 'host') fromHost(sock, message);
-      else fromPlayer(sock, message, text);
-    } catch (error) {
-      console.error('Сообщение не обработано:', error.message);
-    }
-    return;
+  try {
+    const message = JSON.parse(text);
+    if (!message || typeof message !== 'object') return;
+    if (sock.role === 'host') fromHost(sock, message);
+    else if (game?.owns(sock.room)) fromPlayer(sock, message);
+  } catch (error) {
+    console.error('Сообщение не обработано:', error.message);
   }
-  // судья и экраны говорят только с пультом, поэтому не могут подделать данные друг для друга
-  rooms.get(sock.room)?.forEach(peer => { if (peer !== sock && (sock.role === 'panel' || peer.role === 'panel')) sendText(peer, text); });
 }
 
 function onData(sock, chunk) {
@@ -204,10 +217,16 @@ function onData(sock, chunk) {
 }
 
 const server = http.createServer((req, res) => {
-  const name = PAGES[new URL(req.url, 'http://x').pathname];
-  const file = req.method === 'GET' && name && pagePath(name);
+  if (req.method !== 'GET') return res.writeHead(404).end();
+  const pathname = new URL(req.url, 'http://x').pathname;
+  if (pathname === '/panel' && !SECRET) return res.writeHead(404).end();
+  const name = Object.hasOwn(PAGES, pathname) ? PAGES[pathname]
+    : Object.hasOwn(ASSETS, pathname) ? ASSETS[pathname] : null;
+  const file = name && pagePath(name);
   if (!file) return res.writeHead(404).end();
-  res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
+  const mime = name.endsWith('.js') ? 'text/javascript'
+    : name.endsWith('.css') ? 'text/css' : 'text/html';
+  res.writeHead(200, { 'content-type': mime + '; charset=utf-8', 'cache-control': 'no-store' });
   fs.createReadStream(file).pipe(res);
 });
 

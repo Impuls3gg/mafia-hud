@@ -1,7 +1,9 @@
 *
 !mafia-hud.html
-!win-civilians.html
-!win-mafia.html
+!hud/
+!hud/**
 !judge/server.js
 !judge/game.js
+!judge/store.js
+!judge/mu.js
 !judge/judge.html

@@ -10,13 +10,14 @@ secret=test-secret
 failed=0
 
 mkdir "$work/judge"
-cp "$judge/server.js" "$judge/game.js" "$judge/judge.html" "$judge/Dockerfile" "$judge/compose.yaml" "$judge/Caddyfile" "$work/judge/"
-cp "$judge/../mafia-hud.html" "$judge/../win-civilians.html" "$judge/../win-mafia.html" "$judge/../.dockerignore" "$work/"
+cp "$judge/server.js" "$judge/game.js" "$judge/store.js" "$judge/mu.js" "$judge/judge.html" "$judge/Dockerfile" "$judge/compose.yaml" "$judge/Caddyfile" "$work/judge/"
+cp "$judge/../mafia-hud.html" "$judge/../.dockerignore" "$work/"
+cp -r "$judge/../hud" "$work/"
 cd "$work/judge" || exit 1
 
 had_node="$(docker images -q node:24-alpine)"
 had_caddy="$(docker images -q caddy:2-alpine)"
-compose() { docker compose -p "$project" --profile https "$@"; }
+compose() { docker compose -f "$work/judge/compose.yaml" -p "$project" --profile https "$@"; }
 cleanup() {
   cd /
   compose down -v --rmi local >/dev/null 2>&1
@@ -29,26 +30,50 @@ trap cleanup EXIT
 expect() { if [ "$2" = "$3" ]; then echo "ok   $1"; else echo "FAIL $1: ожидалось [$3], получено [$2]"; failed=1; fi; }
 status() { curl -sk -o /dev/null -w '%{http_code}' --max-time 10 "$1"; }
 start() {
-  docker compose -p "$project" up -d --build --remove-orphans >/dev/null 2>&1 || { echo 'FAIL контейнеры не запустились'; failed=1; }
-  sleep 4
+  docker compose -p "$project" up -d --build --wait --remove-orphans || { echo 'FAIL контейнеры не запустились'; failed=1; }
 }
 
 websocket() {
-  docker run --rm --network host -e NODE_TLS_REJECT_UNAUTHORIZED=0 node:24-alpine node --no-warnings -e "
-const base='$1',room='e'.repeat(32),url=(role,key)=>base+'/ws?room='+room+'&role='+role+(key?'&key='+key:'');
-const result=ws=>new Promise(done=>{ws.onclose=e=>done(e.code);ws.onopen=()=>setTimeout(()=>done('open'),400)});
-(async()=>{
-  const out=[await result(new WebSocket(url('panel','nope'))),await result(new WebSocket(url('judge')))];
-  const panel=new WebSocket(url('panel','$secret'));out.push(await result(panel));
-  const judge=new WebSocket(url('judge'));out.push(await result(judge));
-  const screen=new WebSocket(url('screen'));out.push(await result(screen));
-  out.push(await new Promise(done=>{screen.onmessage=e=>{if(e.data.length>200000)done('big')};panel.send('x'.repeat(250000));setTimeout(()=>done('no big'),5000)}));
-  out.push(await new Promise(done=>{panel.onmessage=e=>{if(e.data==='cmd')done('cmd')};judge.send('cmd');setTimeout(()=>done('no cmd'),5000)}));
-  console.log(out.join(' '));process.exit(0);
-})();
-" 2>/dev/null | tail -1
+  docker run --rm --network host -e NODE_TLS_REJECT_UNAUTHORIZED=0 node:24-alpine node --no-warnings -e '
+const [base, secret] = process.argv.slice(1);
+const open = params => new WebSocket(base + "/ws?" + new URLSearchParams(params));
+function waitMessage(ws, check) {
+  return new Promise(resolve => ws.addEventListener("message", event => {
+    const m = JSON.parse(event.data);
+    if (check(m)) resolve(m);
+  }));
 }
-want='4401 4403 open open open big cmd'
+const action = (ws, message) => ws.send(JSON.stringify(message));
+const timeout = setTimeout(() => process.exit(1), 8000);
+(async () => {
+  const wrong = open({role:"host",key:"wrong"});
+  const rejected = await new Promise(resolve => wrong.onclose = e => resolve(e.code));
+  if (rejected !== 4401) process.exit(1);
+
+  const host = open({role:"host",key:secret});
+  const {S} = await waitMessage(host, m => m.kind === "game" && m.hello);
+  const screen = open({role:"screen",room:S.judge.hud});
+  screen.onopen = () => action(screen,{kind:"hello"});
+  await waitMessage(screen, m => m.kind === "view");
+
+  const largePhoto = "data:image/jpeg;base64," + "A".repeat(250000);
+  const gotPhoto = waitMessage(screen, m => m.kind === "photo" && m.data === largePhoto);
+  action(host, {kind:"photo",pid:S.seats[0].pid,data:largePhoto});
+  await gotPhoto;
+
+  const judge = open({role:"judge",room:S.judge.room});
+  judge.onopen = () => action(judge,{kind:"hello"});
+  const before = await waitMessage(judge, m => m.kind === "state");
+  const afterFoul = waitMessage(screen, m => m.kind === "view" && m.view.seats[0].fouls !== before.seats[0].fouls);
+  action(judge,{kind:"cmd",a:"foul",i:0,d:before.seats[0].fouls >= 4 ? -1 : 1});
+  await afterFoul;
+  clearTimeout(timeout);
+  console.log("ok");
+  process.exit(0);
+})();
+' "$1" "$secret" 2>/dev/null | tail -1
+}
+want=ok
 
 # Меняет название игры через пульт на сервере или, без аргумента, читает его.
 game_title() {
@@ -68,12 +93,16 @@ expect 'по IP: файлы сервера закрыты' "$(status http://loca
 expect 'по IP: связь и пароль' "$(websocket ws://localhost)" "$want"
 expect 'по IP: страница пульта' "$(status http://localhost/panel)" 200
 expect 'игра сохраняется' "$(game_title Финал)" Финал
-docker compose -p "$project" up -d --force-recreate >/dev/null 2>&1
-sleep 4
-expect 'игра переживает пересоздание контейнера' "$(game_title '')" Финал
+docker compose -p "$project" down || failed=1
+start
+expect 'игра переживает остановку и повторный запуск' "$(game_title '')" Финал
 
 printf 'JUDGE_SECRET=%s\nDOMAIN=localhost\nCOMPOSE_PROFILES=https\n' "$secret" > .env
 start
+for try in {1..15}; do
+  [ "$(status https://localhost/hud)" = 200 ] && break
+  sleep 1
+done
 expect 'HTTPS: страница /hud' "$(status https://localhost/hud)" 200
 expect 'HTTPS: http перенаправляется' "$(status http://localhost/hud)" 308
 expect 'HTTPS: связь и пароль' "$(websocket wss://localhost)" "$want"

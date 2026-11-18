@@ -38,7 +38,19 @@ select:disabled{opacity:.45}
 table.pr{width:100%;border-collapse:collapse;table-layout:fixed}
 .pr th{font-size:12px;font-weight:600;color:#a09d95;padding:6px 2px;border:1px solid var(--line)}
 .pr td{border:1px solid var(--line);padding:2px;vertical-align:middle;height:46px}
-.pr col.nom{width:40px}.pr col.n{width:28px}.pr col.f{width:92px}.pr col.l{width:56px}.pr col.r{width:66px}
+.pr .c-nom{width:40px}.pr .c-n{width:28px}.pr .c-f{width:92px}.pr .c-l{width:56px}.pr .c-r{width:66px}.pr .c-s{width:66px}
+/* баллы: на узком экране отдельный режим «Баллы», на широком все колонки сразу, как на MafiaUniverse */
+.pr .scol{display:none}
+body.mode-scores .pr .gcol{display:none}
+body.mode-scores .pr .scol{display:table-cell}
+.modes{display:flex;gap:4px;margin:0 0 6px}
+.modes button{flex:1;min-height:36px}
+@media (min-width:760px){.pr .scol,body.mode-scores .pr .gcol{display:table-cell}.modes{display:none}}
+.sc-in{width:100%;min-height:40px;padding:0 6px;font:inherit;font-size:15px;text-align:center;color:#e9e7e2;background:#111116;border:1px solid #2a2a32;border-radius:6px}
+.sc-in::placeholder{color:#55535b}
+.sc-in.set{color:#7fd17f;border-color:#2f5a2f}.sc-in.neg.set{color:#ff8a8a;border-color:#5a2f2f}
+.sc-in.bad{border-color:var(--hot);color:var(--hot)}
+.lhtype{width:100%;min-height:42px;margin-bottom:6px;padding:0 10px;font:inherit;font-size:16px;color:inherit;background:#111116;border:1px solid #34343c;border-radius:6px}
 .pr .no{text-align:center;color:#77757d;font-size:14px}
 .pr tr.out .nick{color:#77757d;text-decoration:line-through}
 .pr tr.speak td{background:#17142b}
@@ -63,7 +75,7 @@ table.pr{width:100%;border-collapse:collapse;table-layout:fixed}
 .fo span.f3{color:#ff8c1a}.fo span.f4{color:var(--hot)}
 .pr select{width:100%;min-height:40px;padding:0 4px}
 .rc-mafia{border-left:3px solid #e8e8e8!important}.rc-don{border-left:3px solid var(--don)!important}.rc-sheriff{border-left:3px solid var(--brass)!important}.rc-civ{border-left:3px solid var(--red)!important}
-body.noroles .pr col.r,body.noroles .pr .rcell,body.noroles .res{display:none}
+body.noroles .pr .rcell,body.noroles .res{display:none!important}
 .more td{height:auto;padding:6px;background:#0d0d11}
 .acts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
 /* голосование */
@@ -87,6 +99,9 @@ body.noroles .pr col.r,body.noroles .pr .rcell,body.noroles .res{display:none}
 .outres{font-size:15px;margin-bottom:6px}
 .past{margin-top:8px;font-size:13px;color:#8a877f}
 .muted{color:#8a877f;font-size:13px}
+.win3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.win3 button{min-height:44px;font-weight:600}
+.win3 .red.on{background:var(--red);border-color:var(--red);color:#fff}.win3 .black.on{background:#000;border-color:#fff;color:#fff}.win3 .draw.on{background:#5a5a62;border-color:#8a8a92;color:#fff}
 /* ночи и лучший ход */
 .act{display:grid;grid-template-columns:60px minmax(0,1fr) 62px;align-items:center;gap:6px;margin-top:4px}
 .act span{font-size:14px;color:#a09d95}
@@ -114,13 +129,18 @@ textarea{width:100%;min-height:96px;padding:8px;resize:vertical}
     </div>
   </section>
   <h2>Игроки</h2>
-  <table class="pr"><colgroup><col class="nom"><col class="n"><col><col class="f"><col class="l"><col class="r"></colgroup>
-    <thead><tr><th title="Выставить на голосование">👍</th><th>№</th><th>Игрок</th><th>Фолы</th><th title="Первый убиенный: нажмите ячейку и введите три номера лучшего хода">1 🔫</th><th class="rcell">Роль</th></tr></thead>
+  <div class="modes" role="group" aria-label="Колонки таблицы"><button type="button" data-mode="game">Игра</button><button type="button" data-mode="scores">Баллы</button></div>
+  <datalist id="dl-b"></datalist><datalist id="dl-p"></datalist>
+  <table class="pr">
+    <thead><tr><th class="c-nom gcol" title="Выставить на голосование">👍</th><th class="c-n">№</th><th>Игрок</th><th class="c-f gcol">Фолы</th><th class="c-l gcol" title="Первый убиенный: нажмите ячейку и введите три номера лучшего хода">1 🔫</th><th class="c-r gcol rcell">Роль</th>
+      <th class="c-s scol" title="Дополнительные баллы">+</th><th class="c-s scol" title="Минус">−</th><th class="c-s scol" title="Технический минус">Тех −</th></tr></thead>
     <tbody id="rows"></tbody></table>
   <h2 id="dayTitle">Голосование</h2>
   <div class="card" id="vote"></div>
   <h2>Ночные действия</h2>
   <div class="nights" id="nights"></div>
+  <h2>Победа</h2>
+  <div class="card win3" id="winner"></div>
   <h2>Заметки</h2>
   <textarea id="notes" placeholder="Заметки судьи к игре" aria-label="Заметки судьи"></textarea>
 </div>
@@ -155,10 +175,38 @@ $('tPlay').onclick=()=>send({a:'timer',op:last.timer.running?'pause':'start'});
 $('tReset').onclick=()=>send({a:'timer',op:'reset'});
 document.querySelectorAll('.len').forEach(b=>b.onclick=()=>send({a:'timer',op:'set',ms:+b.dataset.ms}));
 // скрытые роли — настройка этого телефона, чтобы роли не подсмотрели из-за плеча
-try{$('hideRoles').checked=localStorage.getItem('judgeHideRoles')==='1'}catch(e){}
 const applyHide=()=>document.body.classList.toggle('noroles',$('hideRoles').checked);
-$('hideRoles').onchange=()=>{try{localStorage.setItem('judgeHideRoles',$('hideRoles').checked?'1':'0')}catch(e){}applyHide();draw()};
+$('hideRoles').onchange=()=>{applyHide();draw()};
 applyHide();
+const fmtScore=v=>v>0?v.toFixed(2).replace('.',','):'';
+const fill=(id,max)=>{for(let k=1;k<=Math.round(max*10);k++)$(id).append(el('option',{value:fmtScore(k/10)}))};
+const SCORE_MAX=1.5; // как в турнирах на MafiaUniverse: от 0 до 1,5 с шагом 0,1
+fill('dl-b',SCORE_MAX);fill('dl-p',SCORE_MAX);
+let mode = 'game';
+const applyMode=()=>{document.body.classList.toggle('mode-scores',mode==='scores');document.querySelectorAll('.modes button').forEach(b=>b.classList.toggle('on',b.dataset.mode===mode))};
+document.querySelectorAll('.modes button').forEach(b=>b.onclick=()=>{mode=b.dataset.mode;applyMode()});
+applyMode();
+// поле балла: можно выбрать из списка или набрать «0,5», «0.5», «,3»; Enter переходит к следующему игроку
+function scoreInput(i,f,v,list,label){
+  const inp=el('input',{type:'text',inputMode:'decimal',className:'sc-in'+(f==='b'?'':' neg')+(v>0?' set':''),value:fmtScore(v),placeholder:'0,00',disabled:!panelOn});
+  inp.setAttribute('list',list);inp.setAttribute('aria-label',label+', игрок '+(i+1));inp.dataset.f=f;inp.dataset.i=i;
+  const commit=()=>{
+    const raw=inp.value.trim().replace(',','.'),n=raw===''?0:Number(raw);
+    if(!Number.isFinite(n)||n<0||n>SCORE_MAX){inp.classList.add('bad');return false}
+    inp.classList.remove('bad');const r=Math.round(n*100)/100;
+    inp.value=fmtScore(r);inp.classList.toggle('set',r>0);
+    if(r!==v){v=r;send({a:'score',i,f,v:r})}
+    return true;
+  };
+  inp.onchange=commit;
+  inp.onkeydown=e=>{if(e.key!=='Enter')return;e.preventDefault();if(!commit())return;
+    const next=document.querySelector(`.sc-in[data-f="${f}"][data-i="${i+1}"]`);if(next){next.focus();next.select()}else inp.blur()};
+  return inp;
+}
+// пока судья печатает в таблице, она не перерисовывается, иначе поле потеряло бы фокус
+let rowsPending=false;
+const typing=()=>$('rows').contains(document.activeElement)&&document.activeElement.tagName==='INPUT';
+$('rows').addEventListener('focusout',()=>setTimeout(()=>{if(rowsPending&&!typing()){rowsPending=false;drawRows()}},0));
 let notesT=null;
 $('notes').oninput=()=>{clearTimeout(notesT);notesT=setTimeout(()=>send({a:'notes',v:$('notes').value}),500)};
 
@@ -186,10 +234,13 @@ function drawRows(){
     const role=el('select',{disabled:!panelOn,className:'rc-'+(s.role||'none')});role.setAttribute('aria-label','Роль игрока '+(i+1));
     ROLES.forEach(([v,t])=>role.add(new Option(t,v)));role.value=s.role||'';
     role.onchange=()=>send({a:'role',i,v:role.value});
-    tr.append(el('td',{},nb),el('td',{className:'no',textContent:i+1}),el('td',{},nick),
-      el('td',{},el('div',{className:'fo'},btn('−',{a:'foul',i,d:-1},{cls:'m',label:'Снять фол',disabled:s.fouls<1}),fo,btn('+',{a:'foul',i,d:1},{cls:'p',label:'Фол',disabled:s.fouls>=4}))),
-      el('td',{},lhCell(i)),
-      el('td',{className:'rcell'},hide?'':role));
+    tr.append(el('td',{className:'gcol'},nb),el('td',{className:'no',textContent:i+1}),el('td',{},nick),
+      el('td',{className:'gcol'},el('div',{className:'fo'},btn('−',{a:'foul',i,d:-1},{cls:'m',label:'Снять фол',disabled:s.fouls<1}),fo,btn('+',{a:'foul',i,d:1},{cls:'p',label:'Фол',disabled:s.fouls>=4}))),
+      el('td',{className:'gcol'},lhCell(i)),
+      el('td',{className:'rcell gcol'},hide?'':role),
+      el('td',{className:'scol'},scoreInput(i,'b',s.b||0,'dl-b','Допы')),
+      el('td',{className:'scol'},scoreInput(i,'p',s.p||0,'dl-p','Минус')),
+      el('td',{className:'scol'},scoreInput(i,'t',s.t||0,'dl-p','Тех. минус')));
     tb.append(tr);
     if(isOpen){
       const acts=el('div',{className:'acts'},
@@ -197,9 +248,9 @@ function drawRows(){
         btn('Убит',{a:'shot',i},{on:s.st==='killed'}),
         btn('Заголосован',{a:'status',i,v:s.st==='voted'?'alive':'voted'},{on:s.st==='voted'}),
         btn('Удалён',{a:'status',i,v:s.st==='removed'?'alive':'removed'},{on:s.st==='removed'}));
-      tb.append(el('tr',{className:'more'},el('td',{colSpan:6},acts)));
+      tb.append(el('tr',{className:'more'},el('td',{colSpan:9},acts)));
     }
-    if(lhOpen===i)tb.append(el('tr',{className:'more'},el('td',{colSpan:6},lhPicker(i))));
+    if(lhOpen===i)tb.append(el('tr',{className:'more'},el('td',{colSpan:9},lhPicker(i))));
   });
 }
 // ячейка первого убиенного: у того, чей лучший ход записан, видны три номера, у остальных подсказка «л.х.»
@@ -219,6 +270,15 @@ function lhPicker(i){
   const head=el('div',{className:'lhhead'},el('span',{textContent:'Лучший ход игрока '+(i+1)+(other?' (заменит ЛХ игрока '+(+last.pu+1)+')':'')}),
     (()=>{const c=el('button',{type:'button',textContent:'Очистить',disabled:!panelOn||!picks.length});c.onclick=()=>setPicks([]);return c})(),
     (()=>{const d=el('button',{type:'button',textContent:'Готово'});d.onclick=()=>{lhOpen=null;lhDraft=null;draw()};return d})());
+  const typed=el('input',{type:'text',inputMode:'numeric',className:'lhtype',placeholder:'Наберите номера: 357 или 3 5 10, затем Enter',value:picks.map(v=>+v+1).join(' ')});
+  typed.setAttribute('aria-label','Лучший ход игрока '+(i+1)+' с клавиатуры');
+  typed.onkeydown=e=>{
+    if(e.key==='Escape'){lhOpen=null;lhDraft=null;typed.blur();return}
+    if(e.key!=='Enter')return;e.preventDefault();
+    const next=parseBest(typed.value).filter(v=>+v<last.seats.length);
+    lhOpen=null;lhDraft=null;send({a:'lhset',i,v:next});typed.blur();
+  };
+  if(matchMedia('(pointer:fine)').matches)setTimeout(()=>typed.focus(),0); // с клавиатурой сразу можно печатать
   const grid=el('div',{className:'lhpick'});
   last.seats.forEach((_,j)=>{
     const k=picks.indexOf(String(j)),b=el('button',{type:'button',className:k>=0?'on':'',disabled:!panelOn||(k<0&&picks.length>=3)});
@@ -227,7 +287,17 @@ function lhPicker(i){
     b.onclick=()=>{const next=k>=0?picks.filter(v=>v!==String(j)):[...picks,String(j)];if(next.length===3&&k<0){lhOpen=null;lhDraft=null}setPicks(next)};
     grid.append(b);
   });
-  return el('div',{},head,grid);
+  return el('div',{},head,typed,grid);
+}
+// номера лучшего хода из строки: «10» — десятый, остальные цифры по одной, повторы убираются, не больше трёх
+function parseBest(text){
+  const out=[];
+  for(let k=0;k<text.length;k++){
+    const c=text[k];if(c<'1'||c>'9')continue;
+    if(c==='1'&&text[k+1]==='0'){out.push('9');k++;continue}
+    out.push(String(+c-1));
+  }
+  return [...new Set(out)].slice(0,3);
 }
 const who=list=>list.map(i=>(+i+1)+' · '+nickOf(+i)).join(', ');
 const nums=list=>list.map(i=>+i+1).join(', ');
@@ -274,6 +344,11 @@ function nightAction(k,f,label,value,result){
   const out=el('b',{className:'res'});[out.className,out.textContent]=[result[0]+' res',result[1]];
   return el('div',{className:'act'},el('span',{textContent:label}),sel,out);
 }
+// победа как на MafiaUniverse: мирные, мафия или ничья; повторное нажатие снимает
+function drawWinner(){
+  const box=$('winner');box.textContent='';
+  [['red','Мирные'],['black','Мафия'],['draw','Ничья']].forEach(([v,t])=>box.append(btn(t,{a:'winner',v:last.winner===v?'':v},{cls:v,on:last.winner===v,label:'Победа: '+t})));
+}
 function drawNights(){
   const box=$('nights');box.textContent='';
   (last.nights||[]).forEach((n,k)=>box.append(el('section',{className:'card'},el('b',{textContent:'Ночь '+(k+1)}),
@@ -285,7 +360,7 @@ function draw(){
   if(!last)return;
   $('msg').hidden=true;$('app').hidden=false;
   $('title').textContent=(last.title||'Судья')+(last.game?' · игра '+last.game:'');
-  drawTimer();drawRows();drawVote();drawNights();
+  drawTimer();if(typing())rowsPending=true;else drawRows();drawVote();drawNights();drawWinner();
   // заметки не перерисовываются, пока судья их печатает
   if(document.activeElement!==$('notes')&&$('notes').value!==last.notes)$('notes').value=last.notes;
   $('notes').disabled=!panelOn;
@@ -303,7 +378,7 @@ function connect(){
       // пульт старой версии не присылает протокол
       m.days=(m.days&&m.days.length?m.days:[{noms:[]}]).map(d=>Object.assign({stage:'vote',revote:[],tied:[],out:[]},d));
       m.timer=m.timer||{running:false,remain:60000,total:60000,speaker:''};
-      m.lh=m.lh||['','',''];m.pu=m.pu||'';m.notes=m.notes||'';
+      m.lh=m.lh||['','',''];m.winner=m.winner||'';m.pu=m.pu||'';m.notes=m.notes||'';
       last=m;gotAt=Date.now();draw();
     }
   };

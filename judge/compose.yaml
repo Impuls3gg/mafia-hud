@@ -5,6 +5,7 @@ services:
     build:
       context: ..
       dockerfile: judge/Dockerfile
+    init: true
     restart: unless-stopped
     environment:
       JUDGE_SECRET: ${JUDGE_SECRET:-}
@@ -12,6 +13,12 @@ services:
       - "${JUDGE_PUBLISH:-127.0.0.1:8787}:8787"
     volumes:
       - judge_data:/data
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/').then(r => { if (!r.ok) process.exitCode = 1 }).catch(() => { process.exitCode = 1 })"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
 
   caddy:
     image: caddy:2-alpine

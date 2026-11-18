@@ -19,19 +19,36 @@ function freePort() {
   });
 }
 
-// Игра хранится в data. Тест, который перезапускает сервер, передаёт одну папку обоим запускам.
+const testResources = new WeakMap();
+function resources(t) {
+  if (!testResources.has(t)) {
+    const owned = { stops: [], dirs: [] };
+    testResources.set(t, owned);
+    t.after(async () => {
+      await Promise.all(owned.stops.map(stop => stop()));
+      for (const dir of owned.dirs) fs.rmSync(dir, { recursive: true, force: true });
+    });
+  }
+  return testResources.get(t);
+}
+
+function tempData(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mafia-hud-data-'));
+  resources(t).dirs.push(dir);
+  return dir;
+}
+
 async function startServer(t, secret, data, fixedPort) {
   const port = fixedPort || await freePort();
-  const owned = !data;
-  const dir = data || fs.mkdtempSync(path.join(os.tmpdir(), 'mafia-hud-data-'));
+  const dir = data || tempData(t);
   const env = { ...process.env, PORT: port, JUDGE_SECRET: secret || '', DATA_DIR: dir };
   const child = spawn(process.execPath, [path.join(ROOT, 'judge', 'server.js')], { env, stdio: 'ignore' });
   const stopped = new Promise(resolve => child.once('exit', resolve));
-  t.after(async () => {
+  const stop = () => {
     child.kill();
-    await stopped;
-    if (owned) fs.rmSync(dir, { recursive: true, force: true });
-  });
+    return stopped;
+  };
+  resources(t).stops.push(stop);
   for (let i = 0; i < 50; i++) {
     const open = await new Promise(resolve => {
       const sock = net.connect(port, 'localhost', () => { sock.destroy(); resolve(true); });
@@ -43,7 +60,7 @@ async function startServer(t, secret, data, fixedPort) {
   return {
     port,
     data: dir,
-    stop: () => { child.kill(); return stopped; },
+    stop,
     http: `http://localhost:${port}`,
     url: (id, role, key) => `ws://localhost:${port}/ws?room=${id}&role=${role}` + (key === undefined ? '' : `&key=${encodeURIComponent(key)}`)
   };
@@ -122,23 +139,6 @@ function findChrome() {
   return candidates.find(file => file && fs.existsSync(file));
 }
 
-// Открывает настоящий пульт в Chrome без окна. OBS подменён, поэтому тест не трогает запущенный OBS.
-function openPanel(t, state, { photos = {}, beacon, debugPort = 0 } = {}) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mafia-hud-test-'));
-  const seed = [
-    "const W=WebSocket;window.WebSocket=function(u){if(u.includes(':4455'))throw new Error('no obs');return new W(u)};",
-    `localStorage.setItem('mafiaHudState.v4',${JSON.stringify(JSON.stringify(state))});`,
-    ...Object.entries(photos).map(([id, data]) => `localStorage.setItem('mafiaHudPhoto.v4.${id}',${JSON.stringify(data)});`),
-    beacon ? `setInterval(()=>{const e=document.getElementById('jSt');if(e)fetch('${beacon}/?'+encodeURIComponent(e.textContent),{mode:'no-cors'}).catch(()=>{})},100);` : ''
-  ].join('');
-  const page = fs.readFileSync(path.join(ROOT, 'mafia-hud.html'), 'utf8').replace('<body>', () => `<body><script>${seed}</script>`);
-  const file = path.join(dir, 'panel.html');
-  fs.writeFileSync(file, page);
-  const chrome = spawn(findChrome(), ['--headless=new', '--disable-gpu', '--no-sandbox', `--user-data-dir=${path.join(dir, 'profile')}`, `--remote-debugging-port=${debugPort}`, `file:///${file.replace(/\\/g, '/').replace(/^\//, '')}#panel`], { stdio: 'ignore' });
-  t.after(() => closeChrome(chrome, dir));
-  return chrome;
-}
-
 async function closeChrome(chrome, dir) {
   killTree(chrome);
   await sleep(300); // Windows отпускает файлы профиля не сразу
@@ -149,7 +149,7 @@ async function closeChrome(chrome, dir) {
 async function openPage(t, url) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mafia-hud-test-'));
   const port = await freePort();
-  const chrome = spawn(findChrome(), ['--headless=new', '--disable-gpu', '--no-sandbox', `--user-data-dir=${path.join(dir, 'profile')}`, `--remote-debugging-port=${port}`, url], { stdio: 'ignore' });
+  const chrome = spawn(findChrome(), ['--headless=new', '--disable-gpu', '--no-sandbox', `--user-data-dir=${path.join(dir, 'profile')}`, `--remote-debugging-port=${port}`, url], { stdio: 'ignore', detached: process.platform !== 'win32' });
   let closed = false;
   const close = async () => { if (!closed) { closed = true; await closeChrome(chrome, dir); } };
   t.after(close);
@@ -185,7 +185,7 @@ async function devtools(port) {
 // Chrome запускает дочерние процессы, и на Windows их нужно закрывать вместе с основным.
 function killTree(child) {
   if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/T', '/F'], { stdio: 'ignore' });
-  else child.kill();
+  else { try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
 }
 
-module.exports = { ROOT, sleep, room, freePort, startServer, connect, until, maskedFrame, rawClient, findChrome, openPanel, openPage, devtools };
+module.exports = { ROOT, sleep, room, freePort, tempData, startServer, connect, until, maskedFrame, rawClient, findChrome, openPage, devtools };

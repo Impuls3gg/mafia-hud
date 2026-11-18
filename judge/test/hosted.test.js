@@ -1,14 +1,14 @@
 // Проверяет игру, которая хранится на сервере: судья и экраны работают без открытого пульта.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
-const os = require('node:os');
 const path = require('node:path');
 const { test } = require('node:test');
-const { sleep, room, freePort, startServer, connect, until, findChrome, openPanel, openPage, devtools } = require('./helpers');
+const { DatabaseSync } = require('node:sqlite');
+const { sleep, room, tempData, startServer, connect, until, findChrome, openPage } = require('./helpers');
 
 const skip = findChrome() ? false : 'нужен Chrome: укажите путь в CHROME_PATH';
 const SECRET = 'correct-horse';
-const BAD_PASSWORD = 4401, NO_ROOM = 4403, MOVED = 4409;
+const BAD_PASSWORD = 4401, NO_ROOM = 4403;
 const PHOTO = 'data:image/jpeg;base64,' + Buffer.alloc(120000, 9).toString('base64');
 
 const hostUrl = (server, key = SECRET) => `ws://localhost:${server.port}/ws?role=host&key=${key}`;
@@ -16,12 +16,6 @@ const messages = client => client.texts().map(text => JSON.parse(text));
 const lastOf = (client, kind) => messages(client).filter(m => m.kind === kind).at(-1);
 const seats = client => lastOf(client, 'state')?.seats;
 const view = client => lastOf(client, 'view')?.view;
-
-function tempDir(t) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mafia-hud-data-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  return dir;
-}
 
 // Входит в пульт и возвращает его вместе с созданной игрой.
 async function openGame(t, server) {
@@ -53,7 +47,7 @@ test('пульт на сервере доступен только с парол
   assert.equal((await fetch(`${server.http}/panel`)).status, 200);
   assert.equal(await connect(t, hostUrl(server, '')), BAD_PASSWORD);
   assert.equal(await connect(t, hostUrl(server, 'nope')), BAD_PASSWORD);
-  assert.ok(!fs.existsSync(path.join(server.data, 'game.json')), 'игра не создаётся без пароля');
+  assert.ok(!fs.existsSync(path.join(open.data, 'hud.sqlite')), 'база создаётся только с паролем');
   const { rooms } = await openGame(t, server);
   assert.match(rooms.room, /^[a-f0-9]{32}$/);
   assert.match(rooms.hud, /^[a-f0-9]{32}$/);
@@ -61,7 +55,7 @@ test('пульт на сервере доступен только с парол
 });
 
 test('судья и экраны работают без пульта, а игра переживает перезапуск сервера', async t => {
-  const data = tempDir(t);
+  const data = tempData(t);
   const first = await startServer(t, SECRET, data);
   const { host, rooms, send } = await openGame(t, first);
   send({ kind: 'patch', seq: 1, ops: [[['title'], 'Кубок города'], [['roster', '0', 'nick'], 'Алиса']] });
@@ -93,14 +87,12 @@ test('судья и экраны работают без пульта, а игр
   assert.ok(await until(() => messages(again.host).some(m => m.kind === 'photo' && m.data === PHOTO)), 'фото не сохранилось');
 });
 
-test('ссылка на худ не даёт прав судьи, а старый пульт уходит на сервер', async t => {
+test('ссылка на худ не даёт прав судьи, а старый вход с ролью panel закрыт', async t => {
   const server = await startServer(t, SECRET);
   const { rooms } = await openGame(t, server);
   assert.equal(await connect(t, server.url(rooms.hud, 'judge')), NO_ROOM);
   assert.equal(await connect(t, server.url(rooms.room, 'screen')), NO_ROOM);
-  assert.equal(await connect(t, server.url(rooms.room, 'panel', 'nope')), BAD_PASSWORD);
-  assert.equal(await connect(t, server.url(rooms.room, 'panel', SECRET)), MOVED);
-  assert.equal(await connect(t, server.url(rooms.hud, 'panel', SECRET)), MOVED);
+  assert.equal(typeof await connect(t, server.url(rooms.room, 'panel', SECRET)), 'number');
 });
 
 test('правки пульта и судьи не затирают друг друга, а новая ссылка отключает старую', async t => {
@@ -183,10 +175,32 @@ test('протокол дня: выставления, голоса, тайме�
   cmd({ a: 'lhset', i: 2, v: [] });
   assert.ok(await until(() => state().lh.join() === ',,' && state().pu === '5'), 'после очистки первым убиенным снова считается отстрел первой ночи');
 
+  cmd({ a: 'score', i: 2, f: 'b', v: 0.3 }); cmd({ a: 'score', i: 2, f: 'p', v: 1.6 }); cmd({ a: 'score', i: 2, f: 'x', v: 1 }); cmd({ a: 'score', i: 4, f: 't', v: 1.234 });
+  assert.ok(await until(() => state().seats[2].b === 0.3 && state().seats[4].t === 1.23), 'допы не записаны');
+  assert.equal(state().seats[2].p, 0, 'больше 1,5 балла не бывает');
   cmd({ a: 'notes', v: 'Игрок 3 сорвал речь' });
   assert.ok(await until(() => state().notes === 'Игрок 3 сорвал речь'));
   cmd({ a: 'notes', v: 'x'.repeat(5000) });
   assert.ok(await until(() => state().notes.length === 2000), 'заметки не ограничены по длине');
+});
+
+test('страница судьи: баллы и лучший ход вводятся с клавиатуры', { skip }, async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms, host } = await openGame(t, server);
+  const page = await openPage(t, `${server.http}/#${rooms.room}`);
+  const stored = () => lastOf(host, 'game').S;
+  assert.ok(await until(() => page.run("document.querySelectorAll('.sc-in').length===30&&!document.querySelector('.sc-in').disabled"), 20000), 'страница судьи не открылась');
+  const key = (sel, text) => page.run(`{const i=document.querySelector(${JSON.stringify(sel)});i.focus();i.value=${JSON.stringify(text)};i.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}))}`);
+  await key('.sc-in[data-f="b"][data-i="0"]', '0,4');
+  assert.ok(await until(() => stored().seats[0].bonus === 0.4), 'допы с клавиатуры не дошли');
+  assert.equal(await page.run('document.activeElement.dataset.i+document.activeElement.dataset.f'), '1b', 'Enter переводит к следующему игроку');
+  await key('.sc-in[data-f="t"][data-i="5"]', 'abc');
+  assert.equal(await page.run("document.querySelector('.sc-in[data-f=\"t\"][data-i=\"5\"]').classList.contains('bad')"), true, 'неверное значение не подсвечено');
+  await page.run("document.activeElement.blur()");
+  await page.run("document.querySelectorAll('.lhb')[6].click()");
+  assert.ok(await until(() => page.run("!!document.querySelector('.lhtype')")));
+  await key('.lhtype', '3 5 10');
+  assert.ok(await until(() => stored().lhPu === '6' && stored().lh.join() === '2,4,9'), 'лучший ход с клавиатуры не записан');
 });
 
 test('голосование: итог, переголосование при равенстве и вопрос «подняли/оставили»', async t => {
@@ -253,18 +267,24 @@ test('неверные сообщения не ломают сервер и иг
   judge.ws.send('{"kind":"cmd","a":"foul","i":2,"d":1}');
   assert.ok(await until(() => seats(judge)[2].fouls === 1), 'сервер перестал отвечать');
   assert.equal(seats(judge)[0].role, '');
-  assert.deepEqual(fs.readdirSync(path.join(server.data, 'photos')), []);
-  assert.equal(JSON.parse(fs.readFileSync(path.join(server.data, 'game.json'), 'utf8')).seats.length, 10);
+  const db = new DatabaseSync(path.join(server.data, 'hud.sqlite'), { readOnly: true });
+  try {
+    assert.equal(db.prepare('SELECT count(*) AS count FROM photos').get().count, 0);
+    assert.equal(JSON.parse(db.prepare('SELECT state FROM game').get().state).seats.length, 10);
+  } finally {
+    db.close();
+  }
 });
 
 test('пульт с сервера открывается заново на другом устройстве', { skip }, async t => {
   const server = await startServer(t, SECRET);
   const url = `${server.http}/panel`;
+  // при полном прогоне тесты запускают несколько Chrome сразу, поэтому ожидания с запасом
   const login = async (page, key) => {
-    await until(() => page.run("!!document.getElementById('login')"), 20000);
+    await until(() => page.run("!!document.getElementById('login')"), 40000);
     await page.run(`document.getElementById('lKey').value=${JSON.stringify(key)};document.getElementById('login').requestSubmit()`);
   };
-  const ready = page => until(() => page.run("!!document.getElementById('rows')"), 20000);
+  const ready = page => until(() => page.run("!!document.getElementById('rows')"), 40000);
 
   const watcher = await openGame(t, server); // показывает, что дошло до сервера
   const stored = () => lastOf(watcher.host, 'game').S;
@@ -273,7 +293,6 @@ test('пульт с сервера открывается заново на др
   assert.ok(await until(() => laptop.run("document.getElementById('lSt').textContent==='Неверный пароль'")), 'нет сообщения о пароле');
   await login(laptop, SECRET);
   assert.ok(await ready(laptop), 'пульт не открылся');
-  assert.equal(await laptop.run("getComputedStyle(document.getElementById('jUrl')).display==='none'||getComputedStyle(document.getElementById('jUrl').parentElement).display"), 'none');
 
   await laptop.run(`const i=document.querySelector('.rn');i.value='Алиса';i.dispatchEvent(new Event('input',{bubbles:true}));
     const r=document.querySelector('#rows [data-f=role]');r.value='mafia';r.dispatchEvent(new Event('change',{bubbles:true}));`);
@@ -284,7 +303,7 @@ test('пульт с сервера открывается заново на др
 
   // экран в настоящей странице худа
   const obs = await openPage(t, `${server.http}/hud?room=${rooms.hud}`);
-  assert.ok(await until(() => laptop.run("document.getElementById('cDisp').textContent.includes('● HUD')"), 20000), 'пульт не видит экран');
+  assert.ok(await until(() => laptop.run("document.getElementById('cDisp').textContent.includes('● HUD')"), 40000), 'пульт не видит экран');
 
   const judge = await joinJudge(t, server, rooms);
   judge.ws.send('{"kind":"cmd","a":"foul","i":0,"d":1}');
@@ -297,13 +316,15 @@ test('пульт с сервера открывается заново на др
   judge.ws.send('{"kind":"cmd","a":"foul","i":0,"d":1}');
   judge.ws.send('{"kind":"cmd","a":"status","i":2,"v":"voted"}');
   assert.ok(await until(() => seats(judge)[0].fouls === 2 && seats(judge)[2].st === 'voted'), 'судья не работает без пульта');
-  assert.ok(await until(() => obs.run("JSON.parse(localStorage.getItem('mafiaHudView.v5')).seats[2].status==='voted'")), 'худ не обновился без пульта');
+  assert.ok(await until(() => obs.run("document.querySelectorAll('.tile')[2]?.classList.contains('s-voted')")), 'худ не обновился без пульта');
 
   const phone = await openPage(t, url);
   await login(phone, SECRET);
   assert.ok(await ready(phone), 'пульт не открылся на втором устройстве');
   assert.ok(await until(() => phone.run("document.querySelector('#rows .fn').textContent==='2'")), 'игра не восстановилась');
   assert.equal(await phone.run("document.querySelector('.rn').value"), 'Алиса');
+  assert.equal(await phone.run('localStorage.length + sessionStorage.length'), 0);
+  assert.equal(await obs.run('localStorage.length + sessionStorage.length'), 0);
   assert.equal(await phone.run("document.querySelector('#rows [data-f=role]').value"), 'mafia');
 });
 
@@ -406,8 +427,58 @@ test('рассадка из MafiaUniverse: стол, номер игры и пе
   assert.equal(await page.run("document.getElementById('roster').textContent.includes('Список пуст')"), true);
 });
 
+// Повторяет форму редактирования игры на MafiaUniverse (/Games/Edit/...): только поля, которые заполняет закладка.
+const muFormRow = (k, nick) => `<tr><td><input type="hidden" id="GamePlayers_${k}__Position" name="GamePlayers[${k}].Position" value="${k + 1}"></td>
+  <td><input class="GamePlayers_Player_Name" value="${nick}"></td>
+  <td><span class="hasfoul"></span><input type="hidden" id="GamePlayers_${k}__Foul" name="GamePlayers[${k}].Foul" value="0"></td>
+  <td><input type="hidden" class="playerkilledfirst" id="GamePlayers_${k}__KilledFirst" name="GamePlayers[${k}].KilledFirst" value="False"><input style="display:none" class="bestMoveInput" id="GamePlayers_${k}__BestMove" name="GamePlayers[${k}].BestMove" value=""></td>
+  <td><select id="GamePlayers_${k}__GameRoleId" name="GamePlayers[${k}].GameRoleId"><option value="1">Мирный</option><option value="2">Шериф</option><option value="3">Мафия</option><option value="4">Дон</option></select></td>
+  <td><input id="GamePlayers_${k}__BonusScore" value="0,00"><input id="GamePlayers_${k}__PenaltyScore" value="0,00"><input id="GamePlayers_${k}__TechPenaltyScore" value="0,00"></td></tr>`;
+const MU_FORM = `<!doctype html><form id="gameForm"><select id="GameWinnerId"><option value="0"></option><option value="1">Мирные</option><option value="2">Мафия</option><option value="3">Ничья</option></select>
+  <table>${Array.from({ length: 10 }, (_, k) => muFormRow(k, k === 3 ? 'Чужой' : `Игрок ${k + 1}`)).join('')}</table><textarea id="Note">Заметка с сайта</textarea></form>`;
+
+test('экспорт на MafiaUniverse: закладка заполняет протокол игры', { skip }, async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms } = await openGame(t, server);
+  const judge = await joinJudge(t, server, rooms);
+  const cmd = c => judge.ws.send(JSON.stringify({ kind: 'cmd', ...c }));
+  const page = await openPage(t, `${server.http}/panel`);
+  await until(() => page.run("!!document.getElementById('login')"), 20000);
+  await page.run(`document.getElementById('lKey').value='${SECRET}';document.getElementById('login').requestSubmit()`);
+  assert.ok(await until(() => page.run("!!document.getElementById('muFillBm')"), 20000), 'пульт не открылся');
+  assert.equal(await page.run("new Function(decodeURIComponent(document.getElementById('muFillBm').href.slice('javascript:'.length)))&&true"), true, 'закладка не собирается');
+
+  cmd({ a: 'role', i: 1, v: 'sheriff' }); cmd({ a: 'role', i: 4, v: 'mafia' }); cmd({ a: 'role', i: 6, v: 'mafia' }); cmd({ a: 'role', i: 8, v: 'don' });
+  cmd({ a: 'foul', i: 0, d: 1 }); cmd({ a: 'foul', i: 0, d: 1 }); cmd({ a: 'foul', i: 9, d: 1 });
+  cmd({ a: 'night', k: 0, f: 'shot', v: '2' });
+  cmd({ a: 'lhset', i: 2, v: ['4', '6', '8'] });
+  cmd({ a: 'nom', i: 4 }); cmd({ a: 'nom', i: 5 }); cmd({ a: 'vote', i: 4, v: 7 }); cmd({ a: 'vote', i: 5, v: 2 }); cmd({ a: 'voteEnd' });
+  cmd({ a: 'score', i: 3, f: 'b', v: 0.5 }); cmd({ a: 'score', i: 7, f: 'p', v: 1 }); cmd({ a: 'score', i: 7, f: 't', v: 0.25 });
+  cmd({ a: 'notes', v: 'Игрок 6 сорвал речь' });
+  assert.ok(await until(() => page.run("S.notes==='Игрок 6 сорвал речь'&&S.seats[7].tech===0.25&&(S.days[0].out||[]).join()==='4'")), 'игра не дошла до пульта');
+  cmd({ a: 'winner', v: 'draw' }); cmd({ a: 'winner', v: 'nobody' });
+  assert.ok(await until(() => page.run("S.winner==='draw'")), 'победа судьи не дошла до пульта');
+
+  const r = await page.run(`(()=>{const doc=new DOMParser().parseFromString(${JSON.stringify(MU_FORM)},'text/html');
+    const d=muExport(),dry=muFill(doc,d,true),g=(k,n)=>doc.getElementById('GamePlayers_'+k+'__'+n);
+    muFill(doc,d,false);
+    return {warn:dry.warn,roles:[...Array(10).keys()].map(k=>g(k,'GameRoleId').value).join(''),fouls:[...Array(10).keys()].map(k=>g(k,'Foul').value).join(''),
+      foulText:doc.querySelector('.hasfoul').textContent,killed:[...Array(10).keys()].filter(k=>g(k,'KilledFirst').value==='True').join(),
+      best:g(2,'BestMove').value,bestShown:g(2,'BestMove').style.display,scores:[3,7].map(k=>[g(k,'BonusScore').value,g(k,'PenaltyScore').value,g(k,'TechPenaltyScore').value].join('/')).join(' '),win:doc.getElementById('GameWinnerId').value,note:doc.getElementById('Note').value}})()`);
+  assert.deepEqual(r.warn, ['Место 4: на сайте «Чужой», в HUD «Игрок 4»'], 'чужой игрок на месте не замечен');
+  assert.equal(r.roles, '1211313141', 'роли');
+  assert.equal(r.fouls, '2000000001', 'фолы');
+  assert.equal(r.foulText, '2');
+  assert.equal(r.killed, '2', 'первый убиенный');
+  assert.equal(r.best, '5,7,9', 'лучший ход номерами через запятую');
+  assert.equal(r.bestShown, '');
+  assert.equal(r.scores, '0,50/0,00/0,00 0,00/1,00/0,25', 'допы, минусы и тех. минусы в формате сайта');
+  assert.equal(r.win, '3', 'ничья, которую поставил судья');
+  assert.match(r.note, /^Заметка с сайта\n\nИгрок 6 сорвал речь\n\nГолосования:\nДень 1: 5 \(7\), 6 \(2\) → стол покидает 5$/, 'заметка дописана к заметке с сайта');
+});
+
 test('изменения пульта без связи доходят, когда сервер вернулся', { skip }, async t => {
-  const data = tempDir(t);
+  const data = tempData(t);
   const first = await startServer(t, SECRET, data);
   const { host } = await openGame(t, first);
   host.ws.close();
@@ -425,46 +496,34 @@ test('изменения пульта без связи доходят, когд
   assert.ok(await until(() => lastOf(watcher, 'game').S.title === 'Без связи', 15000), 'правка потерялась');
 });
 
-test('пульт из файла переносит игру на сервер, а ссылки остаются прежними', { skip }, async t => {
-  const server = await startServer(t, SECRET);
-  const nicks = ['Алиса', 'Борис', 'Вера', 'Глеб', 'Дарья', 'Егор', 'Жанна', 'Захар', 'Ирина', 'Кирилл'];
-  const state = {
-    v: 1, title: 'Кубок города', game: 3, accent: '#1c7ed6', showFouls: true, photoVer: 0,
-    judge: { url: server.http, room: room('a'), hud: room('f'), key: SECRET },
-    roster: nicks.map((nick, i) => ({ id: 'p' + i, nick })),
-    seats: nicks.map((_, i) => ({ pid: 'p' + i, role: i ? '' : 'mafia', status: 'alive', fouls: 0 })),
-    nights: [{ shot: '', check: '', don: '' }],
-    wait: { show: false, running: false, endAt: 0, left: 1, total: 1 }
-  };
-  const debugPort = await freePort();
-  openPanel(t, state, { photos: { p0: PHOTO, 'p0.mafia': PHOTO + 'AA' }, debugPort });
-  const panel = await devtools(debugPort);
+test('SQLite подхватывает прежнюю игру и фото один раз', async t => {
+  const data = tempData(t);
+  const photos = path.join(data, 'photos');
+  const stateFile = path.join(data, 'game.json');
+  const judge = { room: room('a'), hud: room('b'), key: 'старый пароль' };
+  fs.mkdirSync(photos);
+  fs.writeFileSync(path.join(photos, 'p0'), PHOTO);
+  fs.writeFileSync(stateFile, JSON.stringify({
+    title: 'До SQLite',
+    judge,
+    roster: [{ id: 'p0', nick: 'Алиса' }],
+    seats: Array.from({ length: 10 }, (_, i) => ({ pid: i === 0 ? 'p0' : '', role: '', status: 'alive', fouls: 0 }))
+  }));
 
-  const screen = await until(async () => {
-    const client = await connect(t, server.url(room('f'), 'screen'));
-    return client.ws ? client : null;
-  }, 20000);
-  const judge = await until(async () => {
-    const client = await connect(t, server.url(room('a'), 'judge'));
-    return client.ws ? client : null;
-  });
-  await until(() => panel.run("document.getElementById('jSt').textContent==='Судья на связи'"));
+  const first = await startServer(t, SECRET, data);
+  const { host, S, send } = await openGame(t, first);
+  assert.equal(S.title, 'До SQLite');
+  assert.deepEqual(S.judge, { room: judge.room, hud: judge.hud });
+  assert.ok(await until(() => messages(host).some(m => m.kind === 'photo' && m.pid === 'p0' && m.data === PHOTO)));
+  send({ kind: 'photo', pid: 'p0', data: null });
+  send({ kind: 'patch', seq: 1, ops: [[['title'], 'После SQLite']] });
+  assert.ok(await until(() => lastOf(host, 'game').ack === 1));
 
-  await panel.run("window.confirm=()=>true;document.querySelector('[data-a=jMove]').click()");
-  assert.ok(await until(() => panel.run("document.getElementById('jSt').textContent.startsWith('Игра перенесена')")), 'игра не перенеслась');
-  await sleep(200);
-  assert.equal(screen.ws.readyState, WebSocket.OPEN, 'экран остаётся на своей ссылке');
-  assert.equal(judge.ws.readyState, WebSocket.OPEN, 'судья остаётся на своей ссылке');
-
-  judge.ws.send('{"kind":"cmd","a":"foul","i":4,"d":1}');
-  assert.ok(await until(() => view(screen)?.seats[4].fouls === 1), 'экран не получает игру от сервера');
-  assert.equal(view(screen).title, 'Кубок города');
-  assert.ok(await until(() => messages(screen).some(m => m.kind === 'photo' && m.pid === 'p0.mafia' && m.data === PHOTO + 'AA')), 'фото роли не перенеслось');
-  assert.ok(await until(() => panel.run("document.getElementById('jSt').textContent.startsWith('Игра перенесена')")), 'пульт снова подключился');
-
-  const { host, S } = await openGame(t, server);
-  assert.equal(S.judge.room, room('a'));
-  assert.equal(S.judge.hud, room('f'));
-  assert.equal(S.judge.key, '', 'пароль не хранится в игре');
-  assert.ok(await until(() => messages(host).filter(m => m.kind === 'photo').length === 2), 'пульт получает не все фото');
+  await first.stop();
+  const second = await startServer(t, SECRET, data);
+  const restored = await openGame(t, second);
+  assert.equal(restored.S.title, 'После SQLite');
+  const screen = await joinScreen(t, second, restored.rooms);
+  assert.equal(view(screen).seats[0].hp, false);
+  assert.ok(fs.existsSync(stateFile), 'старый файл остаётся резервной копией');
 });
