@@ -25,13 +25,13 @@ select:disabled{opacity:.45}
 .timer{position:sticky;top:41px;z-index:2;background:#000;padding:8px 0 6px;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"clock who" "btns btns";align-items:center;gap:6px 12px;border-bottom:1px solid var(--line)}
 .timer .clock{grid-area:clock}.timer .who{grid-area:who}.timer .tbtns{grid-area:btns;justify-content:flex-start;align-items:center}
 .timer .hide{margin-left:auto}
+.timer.finished .clock{color:var(--hot)}
 .clock{font:300 54px/1 'Segoe UI',Roboto,Arial,sans-serif;font-variant-numeric:tabular-nums;color:var(--speak);letter-spacing:.02em}
-.clock.zero{color:var(--hot)}
 .who{min-width:0;font-size:13px;color:#a09d95}
 .who b{display:block;font-size:15px;color:#e9e7e2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tbtns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .tbtns button{min-width:44px;font-size:18px}
-.tbtns button.len{font-size:13px}
+.tbtns #tStop{font-size:14px}
 .hide{display:flex;align-items:center;gap:6px;font-size:13px;color:#c9c6bf;white-space:nowrap}
 .hide input{width:18px;height:18px}
 /* таблица игроков */
@@ -68,6 +68,11 @@ body.mode-scores .pr .scol{display:table-cell}
 .nick small.pu{color:var(--foul)}
 .nick{width:100%;min-height:40px;padding:0 6px;text-align:left;font-size:15px;font-weight:600;background:none;border:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .nick small{display:block;font-size:11px;font-weight:400;color:var(--hot)}
+.nick-line{display:flex;align-items:center;min-width:0}
+.nick-line .nick{flex:1;width:auto}
+.speech-actions{display:flex;flex:none;gap:4px;white-space:nowrap}
+.speech-actions button{min-height:36px;padding:0 5px;font-size:12px}
+.speech-hint{margin:0 2px 8px}
 .fo{display:flex;align-items:center;justify-content:space-between}
 .fo button{width:38px;min-height:38px;padding:0;font-size:20px;background:none;border:0}
 .fo .p{color:#7fb36b}.fo .m{color:#b07a7a}
@@ -77,7 +82,22 @@ body.mode-scores .pr .scol{display:table-cell}
 .rc-mafia{border-left:3px solid #e8e8e8!important}.rc-don{border-left:3px solid var(--don)!important}.rc-sheriff{border-left:3px solid var(--brass)!important}.rc-civ{border-left:3px solid var(--red)!important}
 body.noroles .pr .rcell,body.noroles .res{display:none!important}
 .more td{height:auto;padding:6px;background:#0d0d11}
-.acts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:4px}
+.acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
+@media (max-width:550px){
+  .pr thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .pr tbody,.pr .more,.pr .more td{display:block}
+  .pr .player{display:grid;grid-template-columns:28px minmax(0,.7fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);border:1px solid var(--line);margin-top:5px}
+  .pr .player td{min-width:0;height:auto;border:0;padding:2px}
+  .pr .player .no{grid-row:1;grid-column:1;display:grid;place-items:center}
+  .pr .player .name-cell{grid-row:1;grid-column:2/-1}
+  .pr .player .nom-cell{grid-row:2;grid-column:1/3}
+  .pr .player .foul-cell,.pr .player .score-pen{grid-row:2;grid-column:3}
+  .pr .player .lh-cell{grid-row:2;grid-column:4}
+  .pr .player .rcell{grid-row:2;grid-column:5}
+  .pr .player .score-bonus{grid-row:2;grid-column:1/3}
+  .pr .player .score-tech{grid-row:2;grid-column:4/-1}
+  .acts button{padding:0 4px;font-size:13px}
+}
 /* голосование */
 .card{background:#0d0d11;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
 .stage{margin-bottom:6px;font-size:13px;color:var(--foul)}
@@ -120,19 +140,20 @@ textarea{width:100%;min-height:96px;padding:8px;resize:vertical}
 <div class="wrap" id="app" hidden>
   <section class="timer" aria-label="Таймер речи">
     <div class="clock" id="clock" aria-live="off">1:00</div>
-    <div class="who" id="who">Нажмите на ник, чтобы дать слово</div>
+    <div class="who" id="who">Выберите 60 или 30 секунд рядом с игроком</div>
     <div class="tbtns">
-      <button type="button" id="tPlay" aria-label="Запустить или остановить таймер">▶</button>
+      <button type="button" id="tPlay" aria-label="Запустить или приостановить таймер">▶</button>
+      <button type="button" id="tStop">Стоп</button>
       <button type="button" id="tReset" aria-label="Сбросить таймер">⟳</button>
-      <button type="button" class="len" data-ms="60000">60</button><button type="button" class="len" data-ms="30000">30</button>
       <label class="hide"><input type="checkbox" id="hideRoles">Скрыть роли</label>
     </div>
   </section>
   <h2>Игроки</h2>
+  <p class="muted speech-hint">Доп. время добавляет 30 секунд и два фола. Доступно говорящему с 0 или 1 фолом.</p>
   <div class="modes" role="group" aria-label="Колонки таблицы"><button type="button" data-mode="game">Игра</button><button type="button" data-mode="scores">Баллы</button></div>
   <datalist id="dl-b"></datalist><datalist id="dl-p"></datalist>
   <table class="pr">
-    <thead><tr><th class="c-nom gcol" title="Выставить на голосование">👍</th><th class="c-n">№</th><th>Игрок</th><th class="c-f gcol">Фолы</th><th class="c-l gcol" title="Первый убиенный: нажмите ячейку и введите три номера лучшего хода">1 🔫</th><th class="c-r gcol rcell">Роль</th>
+    <thead><tr><th class="c-nom gcol" title="Выставить на голосование">👍</th><th class="c-n">№</th><th>Игрок</th><th class="c-f gcol">Фолы</th><th class="c-l gcol" title="Лучший ход можно записать для двух игроков">ЛХ</th><th class="c-r gcol rcell">Роль</th>
       <th class="c-s scol" title="Дополнительные баллы">+</th><th class="c-s scol" title="Минус">−</th><th class="c-s scol" title="Технический минус">Тех −</th></tr></thead>
     <tbody id="rows"></tbody></table>
   <h2 id="dayTitle">Голосование</h2>
@@ -165,15 +186,31 @@ const seatOpts=(sel,blank='—')=>{sel.add(new Option(blank,''));last.seats.forE
 
 /* ---- таймер: сервер присылает остаток, дальше телефон считает сам ---- */
 const left=()=>{const t=last&&last.timer;if(!t)return 0;return t.running?Math.max(0,t.remain-(Date.now()-gotAt)):t.remain};
+const activeSpeaker=()=>left()>0?last.timer.speaker:'';
 const fmt=ms=>{const s=Math.ceil(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const clock=$('clock'),timerBar=clock.parentElement;
 function tick(){
   if(!last||!last.timer)return;
-  const ms=left();$('clock').textContent=fmt(ms);$('clock').classList.toggle('zero',ms<=0);
+  const ms=left();
+  const finished=ms<=0,changed=timerBar.classList.contains('finished')!==finished;
+  timerBar.classList.toggle('finished',finished);
+  clock.textContent=fmt(ms);
+  if(!finished)return;
+  $('tPlay').disabled=true;
+  $('tStop').disabled=true;
+  if(!changed)return;
+  drawSpeaker('');
+  const row=$('rows').querySelector('.player.speak');
+  if(row){
+    row.classList.remove('speak');
+    row.querySelector('.speech-actions .on')?.classList.remove('on');
+    row.querySelector('.speech-actions button:last-child').disabled=true;
+  }
 }
 setInterval(tick,200);
 $('tPlay').onclick=()=>send({a:'timer',op:last.timer.running?'pause':'start'});
+$('tStop').onclick=()=>send({a:'timer',op:'stop'});
 $('tReset').onclick=()=>send({a:'timer',op:'reset'});
-document.querySelectorAll('.len').forEach(b=>b.onclick=()=>send({a:'timer',op:'set',ms:+b.dataset.ms}));
 // скрытые роли — настройка этого телефона, чтобы роли не подсмотрели из-за плеча
 const applyHide=()=>document.body.classList.toggle('noroles',$('hideRoles').checked);
 $('hideRoles').onchange=()=>{applyHide();draw()};
@@ -210,21 +247,32 @@ $('rows').addEventListener('focusout',()=>setTimeout(()=>{if(rowsPending&&!typin
 let notesT=null;
 $('notes').oninput=()=>{clearTimeout(notesT);notesT=setTimeout(()=>send({a:'notes',v:$('notes').value}),500)};
 
-function drawTimer(){
-  const t=last.timer,sp=t.speaker;
+function drawSpeaker(sp){
   $('who').innerHTML='';
-  $('who').append(sp===''?'Нажмите на ник, чтобы дать слово':el('span',{},'Говорит',el('b',{textContent:(+sp+1)+' · '+nickOf(+sp)})));
-  $('tPlay').textContent=t.running?'⏸':'▶';
+  $('who').append(sp===''?'Выберите 60 или 30 секунд рядом с игроком':el('span',{},'Говорит',el('b',{textContent:(+sp+1)+' · '+nickOf(+sp)})));
+}
+function drawTimer(){
+  drawSpeaker(activeSpeaker());
+  $('tPlay').textContent=last.timer.running?'⏸':'▶';
   document.querySelectorAll('.timer button').forEach(b=>{b.disabled=!panelOn});
-  document.querySelectorAll('.len').forEach(b=>b.classList.toggle('on',+b.dataset.ms===t.total));
+  $('tStop').disabled=!panelOn||(!last.timer.running&&activeSpeaker()==='');
   tick();
+}
+function speechButtons(i,fouls,selected){
+  const buttons=[60,30].map(sec=>btn(sec+' с',{a:'timer',op:'speak',v:String(i),ms:sec*1000},
+    {on:selected&&last.timer.total===sec*1000,label:'Речь '+sec+' секунд, игрок '+(i+1)}));
+  const extra=btn('Доп. +30 с',{a:'timer',op:'extra',i},
+    {label:'Дополнительные 30 секунд и два фола, игрок '+(i+1),disabled:!selected||fouls>=2});
+  return el('div',{className:'speech-actions'},...buttons,extra);
 }
 function drawRows(){
   const tb=$('rows');tb.textContent='';
   const today=last.days[last.days.length-1],voting=today.stage||'vote',noms=today.noms.map(n=>n.i),hide=$('hideRoles').checked;
+  const speaker=activeSpeaker();
   last.seats.forEach((s,i)=>{
     const out=s.st!=='alive',isOpen=open===i;
-    const tr=el('tr',{className:(out?'out':'')+(last.timer.speaker===String(i)?' speak':'')});
+    const speaking=speaker===String(i);
+    const tr=el('tr',{className:'player'+(out?' out':'')+(speaking?' speak':'')});
     const nb=btn('👍',{a:'nom',i},{cls:'nomb',on:noms.includes(String(i)),label:'Выставить игрока '+(i+1),disabled:out||voting!=='vote'});
     const nick=el('button',{type:'button',className:'nick',textContent:nickOf(i)});
     nick.setAttribute('aria-expanded',isOpen);
@@ -234,17 +282,17 @@ function drawRows(){
     const role=el('select',{disabled:!panelOn,className:'rc-'+(s.role||'none')});role.setAttribute('aria-label','Роль игрока '+(i+1));
     ROLES.forEach(([v,t])=>role.add(new Option(t,v)));role.value=s.role||'';
     role.onchange=()=>send({a:'role',i,v:role.value});
-    tr.append(el('td',{className:'gcol'},nb),el('td',{className:'no',textContent:i+1}),el('td',{},nick),
-      el('td',{className:'gcol'},el('div',{className:'fo'},btn('−',{a:'foul',i,d:-1},{cls:'m',label:'Снять фол',disabled:s.fouls<1}),fo,btn('+',{a:'foul',i,d:1},{cls:'p',label:'Фол',disabled:s.fouls>=4}))),
-      el('td',{className:'gcol'},lhCell(i)),
+    tr.append(el('td',{className:'gcol nom-cell'},nb),el('td',{className:'no',textContent:i+1}),
+      el('td',{className:'name-cell'},el('div',{className:'nick-line'},nick,speechButtons(i,s.fouls,speaking))),
+      el('td',{className:'gcol foul-cell'},el('div',{className:'fo'},btn('+',{a:'foul',i,d:1},{cls:'p',label:'Фол',disabled:s.fouls>=4}),fo,btn('−',{a:'foul',i,d:-1},{cls:'m',label:'Снять фол',disabled:s.fouls<1}))),
+      el('td',{className:'gcol lh-cell'},lhCell(i)),
       el('td',{className:'rcell gcol'},hide?'':role),
-      el('td',{className:'scol'},scoreInput(i,'b',s.b||0,'dl-b','Допы')),
-      el('td',{className:'scol'},scoreInput(i,'p',s.p||0,'dl-p','Минус')),
-      el('td',{className:'scol'},scoreInput(i,'t',s.t||0,'dl-p','Тех. минус')));
+      el('td',{className:'scol score-bonus'},scoreInput(i,'b',s.b||0,'dl-b','Допы')),
+      el('td',{className:'scol score-pen'},scoreInput(i,'p',s.p||0,'dl-p','Минус')),
+      el('td',{className:'scol score-tech'},scoreInput(i,'t',s.t||0,'dl-p','Тех. минус')));
     tb.append(tr);
     if(isOpen){
       const acts=el('div',{className:'acts'},
-        btn('▶ Речь',{a:'timer',op:'speak',v:last.timer.speaker===String(i)?'':String(i)},{on:last.timer.speaker===String(i)}),
         btn('Убит',{a:'shot',i},{on:s.st==='killed'}),
         btn('Заголосован',{a:'status',i,v:s.st==='voted'?'alive':'voted'},{on:s.st==='voted'}),
         btn('Удалён',{a:'status',i,v:s.st==='removed'?'alive':'removed'},{on:s.st==='removed'}));
@@ -253,21 +301,25 @@ function drawRows(){
     if(lhOpen===i)tb.append(el('tr',{className:'more'},el('td',{colSpan:9},lhPicker(i))));
   });
 }
-// ячейка первого убиенного: у того, чей лучший ход записан, видны три номера, у остальных подсказка «л.х.»
-const picksOf=i=>i===lhOpen&&lhDraft?lhDraft:last.pu===String(i)?last.lh.filter(Boolean):[];
+function savedPicksOf(i){
+  if(last.pu===String(i))return last.lh.filter(Boolean);
+  return last.lhExtra?.pu===String(i)?last.lhExtra.seats:[];
+}
+const picksOf=i=>i===lhOpen&&lhDraft?lhDraft:savedPicksOf(i);
 function lhCell(i){
-  const picks=picksOf(i),b=el('button',{type:'button',className:'lhb'+(picks.length?' set':'')+(lhOpen===i?' open':''),disabled:!panelOn,
+  const full=last.lh.some(Boolean)&&last.lhExtra&&!savedPicksOf(i).length;
+  const picks=picksOf(i),b=el('button',{type:'button',className:'lhb'+(picks.length?' set':'')+(lhOpen===i?' open':''),disabled:!panelOn||!!full,
     textContent:picks.length?picks.map(v=>+v+1).join(' '):'л.х.'});
-  b.setAttribute('aria-label','Лучший ход, если первым убит игрок '+(i+1));
+  if(full)b.title='Уже записаны два лучших хода';
+  b.setAttribute('aria-label','Лучший ход игрока '+(i+1));
   b.setAttribute('aria-expanded',lhOpen===i);
   b.onclick=()=>{lhOpen=lhOpen===i?null:i;lhDraft=null;lhDraft=lhOpen===null?null:[...picksOf(i)];draw()};
   return b;
 }
-// ввод трёх номеров: нажатие добавляет номер, повторное убирает; игрок становится первым убиенным
+// Нажатие добавляет номер, повторное нажатие убирает его.
 function lhPicker(i){
   const picks=picksOf(i),setPicks=v=>{lhDraft=v;send({a:'lhset',i,v});draw()};
-  const other=last.pu!==''&&last.pu!==String(i)&&last.lh.some(Boolean);
-  const head=el('div',{className:'lhhead'},el('span',{textContent:'Лучший ход игрока '+(i+1)+(other?' (заменит ЛХ игрока '+(+last.pu+1)+')':'')}),
+  const head=el('div',{className:'lhhead'},el('span',{textContent:'Лучший ход игрока '+(i+1)}),
     (()=>{const c=el('button',{type:'button',textContent:'Очистить',disabled:!panelOn||!picks.length});c.onclick=()=>setPicks([]);return c})(),
     (()=>{const d=el('button',{type:'button',textContent:'Готово'});d.onclick=()=>{lhOpen=null;lhDraft=null;draw()};return d})());
   const typed=el('input',{type:'text',inputMode:'numeric',className:'lhtype',placeholder:'Наберите номера: 357 или 3 5 10, затем Enter',value:picks.map(v=>+v+1).join(' ')});
@@ -353,8 +405,8 @@ function drawNights(){
   const box=$('nights');box.textContent='';
   (last.nights||[]).forEach((n,k)=>box.append(el('section',{className:'card'},el('b',{textContent:'Ночь '+(k+1)}),
     nightAction(k,'shot','Отстрел',n.shot,['','']),
-    nightAction(k,'check','Шериф',n.check,checkResult(last.seats[n.check])),
-    nightAction(k,'don','Дон',n.don,donResult(last.seats[n.don])))));
+    nightAction(k,'don','Дон',n.don,donResult(last.seats[n.don])),
+    nightAction(k,'check','Шериф',n.check,checkResult(last.seats[n.check])))));
 }
 function draw(){
   if(!last)return;

@@ -168,12 +168,16 @@ test('протокол дня: выставления, голоса, тайме�
   cmd({ a: 'lh', k: 0, v: '1' }); cmd({ a: 'lh', k: 2, v: '8' }); cmd({ a: 'lh', k: 5, v: '2' });
   assert.ok(await until(() => state().lh.join() === '1,,8' && state().pu === '5'), 'лучший ход не записан');
   assert.deepEqual(view(screen).lh, { pu: '5', seats: ['1', '', '8'] });
-  // ячейка первого убиенного в таблице судьи, как на MafiaUniverse: игрок становится первым убиенным,
-  // берутся три разных существующих номера, лишние и повторы отбрасываются
+  // Обе записи доступны судье и HUD.
   cmd({ a: 'lhset', i: 2, v: ['4', '4', '0', '99', '7', '9'] });
-  assert.ok(await until(() => state().pu === '2' && state().lh.join() === '4,0,7'), 'лучший ход из ячейки не записан');
-  assert.ok(await until(() => view(screen).lh.pu === '2'), 'худ не узнал первого убиенного');
+  assert.ok(await until(() => state().lhExtra?.seats.join() === '4,0,7'), 'второй лучший ход не записан');
+  assert.equal(state().lhExtra.pu, '2');
+  assert.deepEqual(view(screen).lh, { pu: '5', seats: ['1', '', '8'] });
+  assert.ok(await until(() => view(screen).lhExtra?.pu === '2'));
+  assert.deepEqual(view(screen).lhExtra.seats, ['4', '0', '7']);
   cmd({ a: 'lhset', i: 2, v: [] });
+  assert.ok(await until(() => state().lhExtra === null && state().lh.join() === '1,,8'));
+  cmd({ a: 'lhset', i: 5, v: [] });
   assert.ok(await until(() => state().lh.join() === ',,' && state().pu === '5'), 'после очистки первым убиенным снова считается отстрел первой ночи');
 
   cmd({ a: 'score', i: 2, f: 'b', v: 0.3 }); cmd({ a: 'score', i: 2, f: 'p', v: 1.6 }); cmd({ a: 'score', i: 2, f: 'x', v: 1 }); cmd({ a: 'score', i: 4, f: 't', v: 1.234 });
@@ -202,6 +206,74 @@ test('страница судьи: баллы и лучший ход вводя�
   assert.ok(await until(() => page.run("!!document.querySelector('.lhtype')")));
   await key('.lhtype', '3 5 10');
   assert.ok(await until(() => stored().lhPu === '6' && stored().lh.join() === '2,4,9'), 'лучший ход с клавиатуры не записан');
+  await page.run("document.querySelectorAll('.lhb')[7].click()");
+  await key('.lhtype', '2 4 6');
+  assert.ok(await until(() => stored().lhExtra?.pu === '7'));
+  assert.deepEqual(await page.run("[...document.querySelectorAll('.lhb.set')].map(b=>b.textContent)"), ['3 5 10', '2 4 6']);
+  await page.run(`(()=>{
+    const f=document.createElement('iframe');f.id='lh-hud';f.src=${JSON.stringify('/hud#' + rooms.hud)};document.body.append(f);
+  })()`);
+  assert.ok(await until(() => page.run("document.getElementById('lh-hud')?.contentDocument?.querySelectorAll('.lhp.on').length===2")));
+  assert.deepEqual(await page.run(`[...document.getElementById('lh-hud').contentDocument.querySelectorAll('.tile')]
+    .flatMap((tile,i)=>{const lh=tile.querySelector('.lhp.on');return lh?[[i+1,[...lh.querySelectorAll('.chip')].map(chip=>chip.textContent)]]:[]})`),
+  [[7, ['3', '5', '10']], [8, ['2', '4', '6']]]);
+});
+
+test('на телефоне кнопки речи стоят справа от ника, по истечении времени судья и HUD завершают речь', { skip }, async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms, host, send } = await openGame(t, server);
+  const page = await openPage(t, `${server.http}/#${rooms.room}`);
+  assert.ok(await until(() => page.run("!!document.querySelector('.player')"), 20000));
+  await page.run("const f=document.createElement('iframe');f.id='phone';f.style.width='360px';f.height='760';f.src=location.href;document.body.append(f)");
+  const doc = "(document.getElementById('phone')?.contentDocument)";
+  const row = doc + "?.querySelector('.player')";
+  const stored = () => lastOf(host, 'game').S;
+  assert.ok(await until(() => page.run(`!!${row} && !${row}.querySelector('.speech-actions button').disabled`), 20000));
+  assert.equal(await page.run(`(()=>{
+    const row=${row},nick=row.querySelector('.nick').getBoundingClientRect(),
+      controls=row.querySelector('.speech-actions').getBoundingClientRect();
+    return controls.left>=nick.right-1 && Math.abs(controls.top+controls.height/2-nick.top-nick.height/2)<2
+      && controls.right<=${doc}.documentElement.clientWidth;
+  })()`), true);
+  assert.deepEqual(await page.run(`[...${doc}.querySelectorAll('#nights .act span')].map(el=>el.textContent)`), ['Отстрел', 'Дон', 'Шериф']);
+  assert.deepEqual(await page.run(`[...${row}.querySelectorAll('.fo button')].map(b=>b.textContent)`), ['+', '−']);
+
+  await page.run(`${row}.querySelector('.nick').click()`);
+  assert.deepEqual(await page.run(`[...${doc}.querySelectorAll('.acts button')].map(b=>b.textContent)`), ['Убит', 'Заголосован', 'Удалён']);
+  await page.run(`${row}.querySelectorAll('.speech-actions button')[1].click()`);
+  assert.ok(await until(() => stored().timer.running && stored().timer.total === 30000 && stored().timer.speaker === '0'));
+  await page.run(`${row}.querySelectorAll('.speech-actions button')[2].click()`);
+  assert.ok(await until(() => stored().seats[0].fouls === 2 && stored().timer.endAt - Date.now() > 30000));
+  assert.ok(await until(() => page.run(`${row}.querySelectorAll('.speech-actions button')[2].disabled`)));
+
+  await page.run(`(()=>{
+    const f=document.createElement('iframe');f.id='overlay';f.src=${JSON.stringify('/hud#' + rooms.hud)};document.body.append(f);
+  })()`);
+  const overlay = "document.getElementById('overlay')?.contentDocument";
+  assert.ok(await until(() => page.run(`!!${overlay}?.querySelector('.spk.on') && !!${overlay}?.querySelector('.tile.speak')`)));
+
+  send({ kind: 'patch', seq: 1, ops: [[['timer', 'endAt'], Date.now() + 1000]] });
+  assert.ok(await until(() => stored().timer.left === 0 && stored().timer.speaker === '' && !stored().timer.running));
+  assert.ok(await until(() => page.run(`(()=>{
+    const judge=${doc},hud=${overlay};
+    const clock=judge.getElementById('clock');
+    return clock.textContent==='0:00' && clock.getClientRects().length>0 && !judge.querySelector('.player.speak')
+      && !judge.querySelector('.speech-actions .on') && !hud.querySelector('.spk.on') && !hud.querySelector('.tile.speak');
+  })()`)));
+
+  await page.run(`${row}.querySelector('.speech-actions button').click()`);
+  assert.ok(await until(() => stored().timer.running && stored().timer.speaker === '0' && stored().timer.total === 60000));
+  assert.ok(await until(() => page.run(`!${doc}.querySelector('.timer.finished') && !!${overlay}.querySelector('.spk.on')`)));
+  assert.equal(await page.run(`${doc}.getElementById('tStop').previousElementSibling.id`), 'tPlay');
+  await page.run(`${doc}.getElementById('tPlay').click()`);
+  assert.ok(await until(() => !stored().timer.running && stored().timer.speaker === '0'));
+  await page.run(`${doc}.getElementById('tStop').click()`);
+  assert.ok(await until(() => !stored().timer.running && stored().timer.speaker === '' && stored().timer.left === 0));
+  assert.ok(await until(() => page.run(`(()=>{
+    const clock=${doc}.getElementById('clock');
+    return clock.textContent==='0:00' && clock.getClientRects().length>0
+      && !${overlay}.querySelector('.spk.on, .tile.speak');
+  })()`)));
 });
 
 test('голосование: итог, переголосование при равенстве и вопрос «подняли/оставили»', async t => {

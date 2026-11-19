@@ -33,7 +33,6 @@ body.overlay{background:transparent;overflow:hidden;width:1920px;height:1080px;f
 .spk{position:absolute;left:50%;top:36px;transform:translateX(-50%);display:none;align-items:center;gap:18px;background:var(--plate);border-bottom:4px solid var(--accent);padding:6px 24px 8px}
 .spk.on{display:flex}
 .spk .clk{font-size:54px;font-weight:500;line-height:1;font-variant-numeric:tabular-nums;letter-spacing:.02em}
-.spk .clk.zero{color:var(--hot)}
 .spk .sw{font-size:26px;font-weight:500;max-width:460px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 /* выставленный на голосование игрок: плашка чуть приподнята */
 .tile.nom{transform:translateY(calc(-22px*var(--ts)))}

@@ -22,8 +22,9 @@ function defaultState(){
 }
 /* ---- протокол дня, как на MafiaUniverse: выставления и голоса по дням, таймер речи, лучший ход, заметки ---- */
 const SPEECH_MS=60000;
+const EXTRA_SPEECH_MS=30000;
 const WINNERS=['','red','black','draw']; // победа, которую ставит судья, как поле «Победитель» на MafiaUniverse
-function protocolDefaults(){return {days:[{noms:[]}],timer:{running:false,endAt:0,left:SPEECH_MS,total:SPEECH_MS,speaker:''},lh:['','',''],lhPu:'',notes:'',winner:''}}
+function protocolDefaults(){return {days:[{noms:[]}],timer:{running:false,endAt:0,left:SPEECH_MS,total:SPEECH_MS,speaker:''},lh:['','',''],lhPu:'',lhExtra:null,notes:'',winner:''}}
 // в играх, сохранённых до появления протокола, этих полей нет
 function protocol(){
   const d=protocolDefaults();
@@ -43,12 +44,16 @@ const stageOf=d=>['vote','revote','lift','done'].includes(d.stage)?d.stage:'vote
 function ballot(d){const st=stageOf(d);return st==='vote'?d.noms:st==='revote'?(d.revote||[]):st==='lift'?(d.tied||[]).map(i=>({i,v:''})):[]}
 const dayMsg=d=>({noms:d.noms.map(n=>({i:n.i,v:n.v})),stage:stageOf(d),revote:(d.revote||[]).map(n=>({i:n.i,v:n.v})),tied:[...(d.tied||[])],out:[...(d.out||[])]});
 const timerOf=()=>S.timer&&typeof S.timer==='object'?S.timer:protocolDefaults().timer;
-function timerLeft(){const t=timerOf();return t.running?Math.max(0,t.endAt-Date.now()):Math.max(0,+t.left||0)}
+function timerLeft(now=Date.now()){const t=timerOf();return t.running?Math.max(0,t.endAt-now):Math.max(0,+t.left||0)}
+function finishSpeech(timer){return {...timer,running:false,speaker:'',endAt:0,left:0}}
 // первый убиенный: тот, у кого судья записал лучший ход, а пока не записал — отстрел первой ночи
 const firstKilled=()=>(typeof S.lhPu==='string'&&S.lhPu)||(S.nights[0]&&S.nights[0].shot)||'';
 const okSeat=v=>v===''||(/^\d+$/.test(v)&&!!S.seats[+v]);
 // таймер для экранов: сколько осталось на момент отправки, дальше экран считает сам
-function timerView(){const t=timerOf();return {running:!!t.running,remain:timerLeft(),total:+t.total||SPEECH_MS,speaker:t.speaker||''}}
+function timerView(){
+  const t=timerOf(),remain=timerLeft();
+  return {running:remain>0&&!!t.running,remain,total:+t.total||SPEECH_MS,speaker:remain>0?t.speaker||'':''};
+}
 function normalState(s){return {...defaultState(),...s,ui:{...UI_DEF,...s.ui}}}
 function waitLeft(){const w=S.wait;return w.running?Math.max(0,w.endAt-Date.now()):Math.max(0,w.left)}
 const person=id=>S.roster.find(r=>r.id===id)||null;
@@ -67,12 +72,13 @@ function buildView(){
     show:S.scene==='gameres'?((S.show||{}).game||null):S.scene==='standings'?((S.show||{}).results||null):null,showPage:Math.max(0,+S.showPage||0),
     timer:timerView(),day:days().length,noms:ballot(curDay()).map(n=>({i:n.i,v:n.v})),
     lh:{pu:firstKilled(),seats:(Array.isArray(S.lh)?S.lh:['','','']).map(String)},
+    lhExtra:S.lhExtra||null,
     wait:{show:!!S.wait.show,running:!!S.wait.running,remain:waitLeft(),sentAt:Date.now()}};
 }
 function seatedPhotos(){return new Set(S.seats.flatMap(s=>[s.pid,photoKey(s)]).filter(Boolean))} // экранам победы нужно обычное фото, худу — фото роли
 function stateMsg(){
   return {kind:'state',title:S.title,game:+S.game||0,seats:S.seats.map((s,i)=>({nick:seatNick(i),role:s.role,st:statusOf(i),kn:shotNight(i)+1,fouls:+s.fouls||0,b:scoreOf(s.bonus),p:scoreOf(s.pen),t:scoreOf(s.tech)})),nights:S.nights.map(n=>({shot:n.shot||'',check:n.check||'',don:n.don||''})),
-    days:days().map(dayMsg),timer:timerView(),pu:firstKilled(),lh:(Array.isArray(S.lh)?S.lh:['','','']).map(String),notes:typeof S.notes==='string'?S.notes:'',winner:WINNERS.includes(S.winner)?S.winner:''};
+    days:days().map(dayMsg),timer:timerView(),pu:firstKilled(),lh:(Array.isArray(S.lh)?S.lh:['','','']).map(String),lhExtra:S.lhExtra||null,notes:typeof S.notes==='string'?S.notes:'',winner:WINNERS.includes(S.winner)?S.winner:''};
 }
 // ночь для кнопки «Убит»: текущая, а если в ней пусто, предыдущая без отстрела (там уже могут быть проверки)
 function shotTarget(){
@@ -130,17 +136,48 @@ const J={
   day(){const t=S.timer;S.days.push({noms:[],stage:'vote'});t.running=false;t.speaker='';t.left=t.total},
   timer(c){
     const t=S.timer,now=Date.now();
-    if(c.op==='speak'){const v=String(c.v??'');if(!okSeat(v))return;t.speaker=v;t.left=t.total;t.running=v!=='';t.endAt=now+t.total}
+    if(c.op==='speak'){
+      const v=String(c.v??'');
+      if(!okSeat(v)||(c.ms!==undefined&&![SPEECH_MS,EXTRA_SPEECH_MS].includes(c.ms)))return;
+      t.total=c.ms??t.total;
+      t.speaker=v;t.left=t.total;t.running=v!=='';t.endAt=now+t.total;
+    }
+    else if(c.op==='extra'){
+      if(!Number.isInteger(c.i)||t.speaker!==String(c.i)||timerLeft(now)===0)return;
+      const s=S.seats[c.i];
+      if(!s||s.fouls>=2)return;
+      if(t.running)t.endAt+=EXTRA_SPEECH_MS;
+      else t.left+=EXTRA_SPEECH_MS;
+      s.fouls+=2;
+    }
     else if(c.op==='start'){if(!t.running&&timerLeft()>0){t.endAt=now+timerLeft();t.running=true}}
-    else if(c.op==='pause'){if(t.running){t.left=timerLeft();t.running=false}}
+    else if(c.op==='pause'){if(t.running&&timerLeft(now)>0){t.left=timerLeft(now);t.running=false}}
+    else if(c.op==='stop'){if(t.running||t.speaker!=='')S.timer=finishSpeech(t)}
     else if(c.op==='reset'){t.running=false;t.left=t.total}
     else if(c.op==='set'&&Number.isInteger(c.ms)&&c.ms>=5000&&c.ms<=600000){t.total=c.ms;t.left=c.ms;t.running=false}
   },
   lh(c){const v=String(c.v??'');if(Number.isInteger(c.k)&&c.k>=0&&c.k<3&&okSeat(v))S.lh[c.k]=v},
-  // ячейка первого убиенного в таблице судьи: игрок c.i становится первым убиенным, c.v — до трёх номеров его лучшего хода
+  // При экспорте протокола используется основной ЛХ.
   lhset(c){
-    const picks=Array.isArray(c.v)?[...new Set(c.v.map(String))].filter(v=>v!==''&&okSeat(v)).slice(0,3):[];
-    S.lhPu=picks.length?String(c.i):'';
+    if(!Array.isArray(c.v))return;
+    const picks=[...new Set(c.v.map(String))].filter(v=>/^[0-9]$/.test(v)&&okSeat(v)).slice(0,3);
+    const owner=String(c.i),primary=firstKilled();
+    if(S.lhExtra?.pu===owner){
+      S.lhExtra=picks.length?{pu:owner,seats:picks}:null;
+      return;
+    }
+    if(primary!==''&&primary!==owner&&S.lh.some(Boolean)){
+      if(picks.length&&!S.lhExtra)S.lhExtra={pu:owner,seats:picks};
+      return;
+    }
+    if(!picks.length&&primary!==owner)return;
+    if(!picks.length&&S.lhExtra){
+      S.lhPu=S.lhExtra.pu;
+      S.lh=[0,1,2].map(j=>S.lhExtra.seats[j]||'');
+      S.lhExtra=null;
+      return;
+    }
+    S.lhPu=picks.length?owner:'';
     S.lh=[0,1,2].map(j=>picks[j]||'');
   },
   notes(c){S.notes=String(c.v??'').slice(0,2000)},

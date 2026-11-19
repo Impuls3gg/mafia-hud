@@ -99,6 +99,11 @@ function createGame(dir, rulesFile) {
       if (!handled || JSON.stringify(previous) === JSON.stringify(candidate)) return false;
       return persist(candidate) === null;
     },
+    expireSpeech() {
+      const timer = rules.S?.timer;
+      if (!timer?.running || timer.endAt > Date.now()) return false;
+      return persist({ ...rules.S, timer: rules.finishSpeech(timer) }) === null;
+    },
     patch(ops, receipt, revision) {
       if (receipt && storage.receipt(receipt.client) >= receipt.seq) return { duplicate: true };
       if (receipt && (!Number.isSafeInteger(revision) || revision < 0 || revision > rules.S.revision)) {

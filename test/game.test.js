@@ -92,3 +92,42 @@ test('удаление игрока убирает обычное и ролев�
   assert.equal(restored.state().roster.some(p => p.id === pid), false);
   assert.deepEqual(restored.photoIds(), []);
 });
+
+test('дополнительное время и два фола записываются вместе только для говорящего', t => {
+  const files = fixture(t);
+  const game = files.game();
+  game.open();
+  const command = (op, fields = {}) => game.command({ a: 'timer', op, ...fields });
+  assert.equal(command('speak', { v: '0', ms: 60000 }), true);
+  assert.equal(command('extra', { i: 1 }), false);
+  game.command({ a: 'foul', i: 0, d: 1 });
+  command('pause');
+  const remaining = game.judgeState().timer.remain;
+  assert.equal(command('extra', { i: 0 }), true);
+  assert.equal(command('extra', { i: 0 }), false);
+  assert.equal(game.judgeState().timer.remain, remaining + 30000);
+  assert.equal(game.judgeState().timer.running, false);
+  assert.equal(game.judgeState().timer.total, 60000);
+  assert.equal(game.state().seats[0].fouls, 3);
+  assert.equal(files.game().state().seats[0].fouls, 3);
+});
+
+test('два лучших хода сохраняются независимо и переживают перезапуск', t => {
+  const files = fixture(t);
+  const game = files.game();
+  game.open();
+  const set = (i, v) => game.command({ a: 'lhset', i, v });
+  assert.equal(set(0, ['1', '2', '3']), true);
+  assert.equal(set(1, ['0', '2', '4']), true);
+  assert.equal(set(2, ['0', '1', '4']), false);
+  assert.equal(set(1, ['0', '4']), true);
+  const restored = files.game();
+  const state = () => restored.judgeState();
+  assert.equal(state().lh.join(), '1,2,3');
+  assert.equal(state().lhExtra.pu, '1');
+  assert.equal(state().lhExtra.seats.join(), '0,4');
+  assert.equal(restored.command({ a: 'lhset', i: 0, v: [] }), true);
+  assert.equal(state().pu, '1');
+  assert.equal(state().lh.join(), '0,4,');
+  assert.equal(state().lhExtra, null);
+});

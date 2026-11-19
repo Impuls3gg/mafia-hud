@@ -37,6 +37,28 @@ const roles = { host: new Set(), judge: new Set(), screen: new Set() };
 const game = SECRET ? createGame(DATA_DIR, path.join(CLIENT_DIR, 'rules.js')) : null;
 const access = createAccess(SECRET, game);
 const results = createResults(game, publish, send);
+let speechEnd, scheduledDeadline;
+
+function scheduleSpeechEnd(retry = 0) {
+  const timer = game?.state()?.timer;
+  const deadline = timer?.running ? timer.endAt : undefined;
+  if (speechEnd && scheduledDeadline === deadline) return;
+  clearTimeout(speechEnd);
+  speechEnd = null;
+  if (deadline === undefined) return;
+  scheduledDeadline = deadline;
+  const delay = Math.min(2147483647, Math.max(retry, deadline - Date.now()));
+  speechEnd = setTimeout(() => {
+    speechEnd = null;
+    try {
+      if (game.expireSpeech()) publish();
+      else scheduleSpeechEnd();
+    } catch (error) {
+      console.error('Не удалось завершить речь:', error.message);
+      scheduleSpeechEnd(1000);
+    }
+  }, delay).unref();
+}
 
 function sendPeers() {
   const judge = roles.judge.size;
@@ -59,6 +81,7 @@ function sendView(socket, view, text) {
 }
 
 function publish() {
+  scheduleSpeechEnd();
   if (roles.screen.size) {
     const view = game.view();
     const text = encode({ kind: 'view', view });
@@ -259,4 +282,6 @@ const server = http.createServer((req, res) => {
 });
 
 attachTransport(server, clientAddress, connected);
+scheduleSpeechEnd();
+server.on('close', () => clearTimeout(speechEnd));
 server.listen(PORT, BIND_HOST, () => console.log(`Сервер судьи запущен: http://${BIND_HOST}:${PORT}`));

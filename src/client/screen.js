@@ -120,16 +120,19 @@ if(MODE!=='panel'){
       q('.info').style.display=(V.title||gl)?'flex':'none';
       const sc=SCENES.includes(V.scene)?V.scene:'game';
       setScene(sc);placeScene(u);
+      const speaker=speechRemaining()>0?V.timer?.speaker:'';
+      const bestMoves=[V.lh,V.lhExtra];
       tiles.forEach((t,i)=>{
         const s=V.seats[i]||{},role=ROLES[s.role]?s.role:'',st=s.status||'alive';
         // на экране победы игрок без роли считается мирным, как и в проверках; пустые места исчезают вместе с проигравшими
         const res=sc==='game'?'':(sc==='red'||sc==='black')&&s.pid&&ROLES[role||'civ'].team===sc?' winner':' loser'; // на экранах итогов плашки уходят
         // победители показываются целиком, даже если их убили или заголосовали
         const out=st!=='alive'&&res!==' winner';
-        const speak=sc==='game'&&V.timer&&V.timer.speaker===String(i); // плашка того, кто сейчас говорит
+        const speak=sc==='game'&&speaker===String(i);
         const nom=sc==='game'&&st==='alive'&&(V.noms||[]).some(n=>n.i===String(i));
         t.className=`tile team-${role?ROLES[role].team:'norole'} r-${role||'none'} s-${out?st:'alive'}`+(out?' out':'')+res+(speak?' speak':'')+(nom?' nom':'');
-        const lh=V.lh||{},picks=(lh.seats||[]).filter(v=>v!==''),lp=t.querySelector('.lhp'),showLh=sc==='game'&&lh.pu===String(i)&&picks.length>0;
+        const picks=bestMoves.find(lh=>lh?.pu===String(i))?.seats?.filter(Boolean)||[];
+        const lp=t.querySelector('.lhp'),showLh=sc==='game'&&picks.length>0;
         lp.classList.toggle('on',showLh);
         lp.innerHTML=showLh?'<span class="lb">ЛХ</span>'+picks.map(v=>`<span class="chip ${vColor(+v)}">${+v+1}</span>`).join(''):'';
         // фото ещё в пути (s.hp): оставляем прежнее, с его приходом draw повторится
@@ -194,16 +197,21 @@ if(MODE!=='panel'){
     }
     /* ---- таймер речи; выставленные и лучший ход показываются на самих плашках ---- */
     function drawProtocol(){
-      const t=V.timer||{},sp=t.speaker||'',spk=q('.spk');
-      spk.classList.toggle('on',sp!==''||!!t.running);
+      const sp=V.timer?.speaker||'';
       q('.spk .sw').textContent=sp===''?'':`${+sp+1} · ${(V.seats[+sp]||{}).nick||''}`;
       q('.spk .sw').style.display=sp===''?'none':'';
       tickTimer();
     }
+    function speechRemaining(){
+      const t=V?.timer;
+      return t?Math.max(0,t.remain-(t.running?Date.now()-viewAt:0)):0;
+    }
     function tickTimer(){
-      const t=V&&V.timer;if(!t)return;
-      const ms=t.running?Math.max(0,t.remain-(Date.now()-viewAt)):Math.max(0,+t.remain||0),s=Math.ceil(ms/1000);
-      const c=q('.spk .clk');c.textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');c.classList.toggle('zero',ms<=0);
+      const t=V?.timer;if(!t)return;
+      const ms=speechRemaining(),s=Math.ceil(ms/1000);
+      q('.spk').classList.toggle('on',ms>0&&(!!t.speaker||t.running));
+      if(ms<=0){q('.tile.speak')?.classList.remove('speak');return}
+      q('.spk .clk').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
     }
     setInterval(tickTimer,200);
   }

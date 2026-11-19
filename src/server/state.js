@@ -20,7 +20,7 @@ const keysAre = (value, keys) => record(value) && Object.keys(value).every(key =
 const validBallot = value => list(value, 10, item => fields(item, { i: seat, v: v => v === '' || integer(v, 10) }));
 const validSeats = value => list(value, 10, seat);
 const editable = new Set(['title', 'roster', 'seats', 'nights', 'ui', 'accent', 'game', 'mu', 'showFouls',
-  'scene', 'judge', 'wait', 'days', 'timer', 'lh', 'lhPu', 'notes', 'winner', 'showPage']);
+  'scene', 'judge', 'wait', 'days', 'timer', 'lh', 'lhPu', 'lhExtra', 'notes', 'winner', 'showPage']);
 
 function timer(value, speech) {
   return fields(value, {
@@ -81,6 +81,9 @@ function validState(state) {
     })) && v.length > 0,
     timer: v => timer(v, true), wait: v => timer(v, false),
     lh: v => list(v, 3, maybeSeat) && v.length === 3, lhPu: maybeSeat,
+    lhExtra: optional(v => v === null || fields(v, {
+      pu: seat, seats: picks => list(picks, 3, seat) && picks.length > 0 && new Set(picks).size === picks.length,
+    })),
     notes: text, winner: v => winners.includes(v), mu: tournament, showPage: optional(v => integer(v, 200)),
     ui: v => fields(v, {
       th: x => number(x, 120, 400), ts: x => number(x, .6, 1.8), gap: x => number(x, 0, 40),
