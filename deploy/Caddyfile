@@ -1,0 +1,5 @@
+{$DOMAIN} {
+    reverse_proxy judge:8787 {
+        header_up X-HUD-Client-IP {remote_host}
+    }
+}

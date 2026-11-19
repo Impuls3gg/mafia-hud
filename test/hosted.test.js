@@ -4,14 +4,14 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
 const { DatabaseSync } = require('node:sqlite');
-const { sleep, room, tempData, startServer, connect, until, findChrome, openPage } = require('./helpers');
+const { sleep, room, tempData, startServer, connect, until, hostSend, findChrome, openPage } = require('./helpers');
 
 const skip = findChrome() ? false : 'нужен Chrome: укажите путь в CHROME_PATH';
 const SECRET = 'correct-horse';
 const BAD_PASSWORD = 4401, NO_ROOM = 4403;
 const PHOTO = 'data:image/jpeg;base64,' + Buffer.alloc(120000, 9).toString('base64');
 
-const hostUrl = (server, key = SECRET) => `ws://localhost:${server.port}/ws?role=host&key=${key}`;
+const hostUrl = (server, key = SECRET) => server.url('', 'host', key);
 const messages = client => client.texts().map(text => JSON.parse(text));
 const lastOf = (client, kind) => messages(client).filter(m => m.kind === kind).at(-1);
 const seats = client => lastOf(client, 'state')?.seats;
@@ -21,7 +21,7 @@ const view = client => lastOf(client, 'view')?.view;
 async function openGame(t, server) {
   const host = await connect(t, hostUrl(server));
   const S = await until(() => lastOf(host, 'game')?.S);
-  return { host, S, rooms: S.judge, send: message => host.ws.send(JSON.stringify(message)) };
+  return { host, S, rooms: S.judge, send: hostSend(host) };
 }
 
 async function joinJudge(t, server, rooms) {
@@ -121,7 +121,7 @@ test('правки пульта и судьи не затирают друг д�
 
 test('пульт переключает худ между игрой и экранами победы', async t => {
   const server = await startServer(t, SECRET);
-  const { rooms, send } = await openGame(t, server);
+  const { host, rooms, send } = await openGame(t, server);
   const screen = await joinScreen(t, server, rooms);
   assert.equal(view(screen).scene, 'game', 'новая игра начинается со сцены игры');
 
@@ -129,9 +129,10 @@ test('пульт переключает худ между игрой и экра
   assert.ok(await until(() => view(screen).scene === 'red'), 'худ не переключился на red');
   send({ kind: 'patch', seq: 2, ops: [[['scene'], 'black']] });
   assert.ok(await until(() => view(screen).scene === 'black'), 'худ не переключился на black');
-  // неизвестная сцена не ломает худ: он остаётся на игре
+  // Неизвестная сцена отклоняется целиком, последний корректный экран остаётся.
   send({ kind: 'patch', seq: 3, ops: [[['scene'], 'oops']] });
-  assert.ok(await until(() => view(screen).scene === 'game'), 'худ не переключился на game');
+  assert.ok(await until(() => lastOf(host, 'game').ack === 3 && lastOf(host, 'game').error));
+  assert.equal(view(screen).scene, 'black');
 });
 
 test('протокол дня: выставления, голоса, таймер речи, лучший ход и заметки', async t => {
@@ -494,6 +495,34 @@ test('изменения пульта без связи доходят, когд
   const second = await startServer(t, SECRET, data, first.port);
   const { host: watcher } = await openGame(t, second);
   assert.ok(await until(() => lastOf(watcher, 'game').S.title === 'Без связи', 15000), 'правка потерялась');
+
+  // Сервер принимает первое назначение, но его подтверждение не доходит до пульта.
+  await page.run(`(()=>{
+    const transmit=WebSocket.prototype.send;
+    WebSocket.prototype.send=function(text){
+      const message=JSON.parse(text);
+      if(message.kind==='patch'){
+        WebSocket.prototype.send=transmit;
+        window.offlineSocket=this;
+        const onMessage=this.onmessage;
+        this.onmessage=event=>{
+          const response=JSON.parse(event.data);
+          if(!(response.kind==='game'&&response.ack===message.seq))onMessage.call(this,event);
+        };
+      }
+      return transmit.call(this,text);
+    };
+    const role=document.querySelector('#rows [data-f=role]');
+    role.value='sheriff';role.dispatchEvent(new Event('change',{bubbles:true}));
+  })()`);
+  assert.ok(await until(() => lastOf(watcher, 'game').S.seats[0].role === 'sheriff'));
+  await page.run('window.offlineSocket.close()');
+  assert.ok(await until(() => page.run("document.getElementById('cSt').textContent==='Нет связи с сервером'")));
+  await page.run(`(()=>{
+    const role=document.querySelector('#rows [data-f=role]');
+    role.value='';role.dispatchEvent(new Event('change',{bubbles:true}));
+  })()`);
+  assert.ok(await until(() => lastOf(watcher, 'game').S.seats[0].role === '', 15000), 'офлайн-отмена назначения потерялась');
 });
 
 test('SQLite подхватывает прежнюю игру и фото один раз', async t => {

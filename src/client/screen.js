@@ -178,7 +178,8 @@ if(MODE!=='panel'){
       const head=q('.resb .rh'),rt=q('.resb .rt');
       if(!d||!Array.isArray(d.rows)){head.innerHTML='';rt.innerHTML='<div class="rr"><span></span><span>Итоги ещё не загружены</span></div>';return}
       if(sc==='gameres'){
-        head.innerHTML=d.winner?`<span class="wn ${d.winner}${ani(0)}">${WIN_TEXT[d.winner]}</span>`:'';
+        const winner=['red','black','draw'].includes(d.winner)?d.winner:'';
+        head.innerHTML=winner?`<span class="wn ${winner}${ani(0)}">${WIN_TEXT[winner]}</span>`:'';
         const won=r=>d.winner==='red'?/мирн|шериф/i.test(r.role):d.winner==='black'?/маф|дон/i.test(r.role):false;
         // роль видна по цвету номера, поэтому отдельной колонки нет
         rt.innerHTML=`<div class="rr hd${ani(0)}"><span></span><span>Игрок</span><span class="c">ПУ</span><span class="r">+</span><span class="r">−</span><span class="r">∑</span></div>`+

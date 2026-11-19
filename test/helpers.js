@@ -6,7 +6,7 @@ const net = require('node:net');
 const os = require('node:os');
 const path = require('node:path');
 
-const ROOT = path.join(__dirname, '..', '..');
+const ROOT = path.join(__dirname, '..');
 const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 const room = char => char.repeat(32);
 
@@ -42,7 +42,7 @@ async function startServer(t, secret, data, fixedPort) {
   const port = fixedPort || await freePort();
   const dir = data || tempData(t);
   const env = { ...process.env, PORT: port, JUDGE_SECRET: secret || '', DATA_DIR: dir };
-  const child = spawn(process.execPath, [path.join(ROOT, 'judge', 'server.js')], { env, stdio: 'ignore' });
+  const child = spawn(process.execPath, [path.join(ROOT, 'src', 'server', 'server.js')], { env, stdio: 'ignore' });
   const stopped = new Promise(resolve => child.once('exit', resolve));
   const stop = () => {
     child.kill();
@@ -62,18 +62,19 @@ async function startServer(t, secret, data, fixedPort) {
     data: dir,
     stop,
     http: `http://localhost:${port}`,
-    url: (id, role, key) => `ws://localhost:${port}/ws?room=${id}&role=${role}` + (key === undefined ? '' : `&key=${encodeURIComponent(key)}`)
+    url: (id, role, key) => ({ address: `ws://localhost:${port}/ws?role=${role}`, auth: { room: id, key } }),
   };
 }
 
 // Подключается и ждёт: при отказе возвращает код закрытия, иначе клиента с накопленными сообщениями.
-function connect(t, address) {
+function connect(t, { address, auth }) {
   return new Promise(resolve => {
     const ws = new WebSocket(address), got = [];
     let timer;
     ws.onmessage = e => got.push(e.data);
     ws.onclose = e => { clearTimeout(timer); resolve(e.code); };
     ws.onopen = () => {
+      ws.send(JSON.stringify({ kind: 'auth', ...auth }));
       timer = setTimeout(() => {
         ws.onclose = null;
         t.after(() => ws.close());
@@ -91,6 +92,23 @@ async function until(check, timeout = 8000) {
     await sleep(50);
   }
   return check();
+}
+
+function hostSend(host) {
+  const client = crypto.randomBytes(16).toString('hex');
+  return message => {
+    if (message.kind === 'patch') {
+      const state = host.texts().map(JSON.parse).filter(m => m.kind === 'game').at(-1).S;
+      const ops = message.ops.map(op => {
+        if (!Array.isArray(op) || op.length !== 2) return op;
+        const [path, value] = op;
+        const previous = path.reduce((node, key) => node && Object.hasOwn(node, key) ? node[key] : undefined, state);
+        return [path, value, { value: previous }];
+      });
+      message = { ...message, client, revision: state.revision, ops };
+    }
+    host.ws.send(JSON.stringify(message));
+  };
 }
 
 // Собирает кадр так, как его отправляет браузер: с маской и нужной длиной.
@@ -118,11 +136,15 @@ function maskedFrame(opcode, fin, payload) {
 function rawClient(t, port, id, role, key) {
   return new Promise((resolve, reject) => {
     const sock = net.connect(port, 'localhost', () => {
-      sock.write(`GET /ws?room=${id}&role=${role}&key=${key || ''} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${crypto.randomBytes(16).toString('base64')}\r\n\r\n`);
+      sock.write(`GET /ws?role=${role} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${crypto.randomBytes(16).toString('base64')}\r\n\r\n`);
     });
     t.after(() => sock.destroy());
     sock.on('error', reject);
-    sock.once('data', data => (data.includes('101') ? resolve(sock) : reject(new Error(String(data)))));
+    sock.once('data', data => {
+      if (!data.includes('101')) return reject(new Error(String(data)));
+      sock.write(maskedFrame(1, true, Buffer.from(JSON.stringify({ kind: 'auth', room: id, key }))));
+      resolve(sock);
+    });
   });
 }
 
@@ -188,4 +210,4 @@ function killTree(child) {
   else { try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
 }
 
-module.exports = { ROOT, sleep, room, freePort, tempData, startServer, connect, until, maskedFrame, rawClient, findChrome, openPage, devtools };
+module.exports = { ROOT, sleep, room, freePort, tempData, startServer, connect, until, hostSend, maskedFrame, rawClient, findChrome, openPage, devtools };

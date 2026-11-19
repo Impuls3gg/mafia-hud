@@ -1,5 +1,5 @@
 /* ================= ПРАВИЛА ИГРЫ =================
-   Этот блок выполняют и пульт, и сервер судьи (judge/game.js), поэтому к странице он не обращается. */
+   Этот блок выполняют и пульт, и сервер судьи (src/server/game.js), поэтому к странице он не обращается. */
 const ROLES={civ:{t:'Мирный',team:'red'},sheriff:{t:'Шериф',team:'red'},mafia:{t:'Мафия',team:'black'},don:{t:'Дон',team:'black'}};
 const UI_DEF={th:236,ts:1,gap:12,mb:30,side:40,ns:1,is:1,ot:55};
 const ACCENT_DEF='#c41e3a';
@@ -7,14 +7,17 @@ const SCENES=['game','red','black','gameres','standings']; // что показ�
 const RES_PAGE=12; // строк итоговой таблицы на одном экране
 const okColor=c=>/^#[0-9a-f]{6}$/i.test(c||'');
 const newId=()=>'p'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
-const emptySeat=pid=>({pid:pid||'',role:'',status:'alive',fouls:0,bonus:0,pen:0,tech:0});
+function emptySeat(pid){return {pid:pid||'',role:'',status:'alive',fouls:0,bonus:0,pen:0,tech:0}}
 // баллы игрока как в протоколе MafiaUniverse: допы (+), минусы (−) и тех. минусы, от 0 до 1,5 с точностью до сотых
 const SCORE_FIELDS={b:'bonus',p:'pen',t:'tech'},SCORE_MAX=1.5;
 const scoreOf=v=>{const n=Math.round((+v||0)*100)/100;return n>0&&n<=SCORE_MAX?n:0};
-const roleKeys=id=>Object.keys(ROLES).map(r=>id+'.'+r); // ключи фото игрока для каждой роли
+function removePlayer(state,id){
+  state.roster=state.roster.filter(player=>player.id!==id);
+  for(const seat of state.seats)if(seat.pid===id)seat.pid='';
+}
 function defaultState(){
   const roster=Array.from({length:10},(_,i)=>({id:newId()+i,nick:'Игрок '+(i+1)}));
-  return {v:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,mu:null,photoVer:0,showFouls:true,scene:'game',judge:{room:'',hud:''},wait:{show:false,running:false,endAt:0,left:600000,total:600000},
+  return {v:0,revision:0,title:'',roster,seats:roster.map(r=>emptySeat(r.id)),nights:[{shot:'',check:'',don:''}],ui:Object.assign({},UI_DEF),accent:ACCENT_DEF,game:1,mu:null,photoVer:0,showFouls:true,scene:'game',judge:{room:'',hud:''},wait:{show:false,running:false,endAt:0,left:600000,total:600000},
     ...protocolDefaults()};
 }
 /* ---- протокол дня, как на MafiaUniverse: выставления и голоса по дням, таймер речи, лучший ход, заметки ---- */
@@ -46,7 +49,7 @@ const firstKilled=()=>(typeof S.lhPu==='string'&&S.lhPu)||(S.nights[0]&&S.nights
 const okSeat=v=>v===''||(/^\d+$/.test(v)&&!!S.seats[+v]);
 // таймер для экранов: сколько осталось на момент отправки, дальше экран считает сам
 function timerView(){const t=timerOf();return {running:!!t.running,remain:timerLeft(),total:+t.total||SPEECH_MS,speaker:t.speaker||''}}
-function normalState(s){const o=Object.assign(defaultState(),s);o.ui=Object.assign({},UI_DEF,s.ui);return o}
+function normalState(s){return {...defaultState(),...s,ui:{...UI_DEF,...s.ui}}}
 function waitLeft(){const w=S.wait;return w.running?Math.max(0,w.endAt-Date.now()):Math.max(0,w.left)}
 const person=id=>S.roster.find(r=>r.id===id)||null;
 const seatNick=i=>{const p=person(S.seats[i].pid);return p?p.nick:''};
@@ -80,7 +83,10 @@ function shotTarget(){
 const J={
   role(c){if(c.v===''||Object.hasOwn(ROLES,c.v))S.seats[c.i].role=c.v},
   foul(c){const s=S.seats[c.i];s.fouls=Math.min(4,Math.max(0,(+s.fouls||0)+(c.d>0?1:-1)))},
-  status(c){if(['alive','voted','removed'].includes(c.v)){const s=S.seats[c.i];s.status=c.v;if(c.v==='alive'&&(+s.fouls||0)>=4)s.fouls=3}},
+  status(c){if(['alive','voted','removed'].includes(c.v)){
+    const s=S.seats[c.i];s.status=c.v;if(c.v==='alive'&&(+s.fouls||0)>=4)s.fouls=3;
+    const d=curDay();if(d.changed)d.changed=d.changed.filter(i=>i!==String(c.i));
+  }},
   shot(c){
     const was=shotNight(c.i);
     if(was>=0){S.nights[was].shot='';return}
@@ -114,11 +120,11 @@ const J={
     else if(st==='vote'){d.stage='revote';d.revote=lead.map(i=>({i,v:''}))}
     else{d.stage='lift';d.tied=lead}
   },
-  lift(c){const d=curDay();if(stageOf(d)!=='lift')return;if(c.v==='up')voteOut(d,d.tied);else if(c.v==='stay'){d.stage='done';d.out=[]}},
+  lift(c){const d=curDay();if(stageOf(d)!=='lift')return;if(c.v==='up')voteOut(d,d.tied);else if(c.v==='stay'){d.stage='done';d.out=[];d.changed=[]}},
   // отмена итога: заголосованные этим голосованием возвращаются в игру, голоса основного этапа остаются
   voteReset(){
-    const d=curDay();(d.out||[]).forEach(i=>{const s=S.seats[+i];if(s&&s.status==='voted')s.status='alive'});
-    d.stage='vote';d.revote=[];d.tied=[];d.out=[];
+    const d=curDay();(d.changed||[]).forEach(i=>{const s=S.seats[+i];if(s&&s.status==='voted')s.status='alive'});
+    d.stage='vote';d.revote=[];d.tied=[];d.out=[];d.changed=[];
   },
   votes(c){const n=curDay().noms.find(x=>x.i===String(c.i));if(n)n.v=Math.min(10,Math.max(0,(+n.v||0)+(c.d>0?1:-1)))},
   day(){const t=S.timer;S.days.push({noms:[],stage:'vote'});t.running=false;t.speaker='';t.left=t.total},
@@ -139,10 +145,13 @@ const J={
   },
   notes(c){S.notes=String(c.v??'').slice(0,2000)},
   winner(c){if(WINNERS.includes(c.v))S.winner=c.v},
-  score(c){const k=SCORE_FIELDS[c.f],v=Number(c.v);if(k&&Number.isFinite(v)&&v>=0&&v<=SCORE_MAX)S.seats[c.i][k]=scoreOf(v)}
+  score(c){const v=Number(c.v);if(Object.hasOwn(SCORE_FIELDS,c.f)&&Number.isFinite(v)&&v>=0&&v<=SCORE_MAX)S.seats[c.i][SCORE_FIELDS[c.f]]=scoreOf(v)}
 };
 const NO_SEAT=new Set(['night','day','timer','lh','notes','voteEnd','lift','voteReset','winner']); // команды, которые не относятся к одному игроку
-function voteOut(d,seats){d.stage='done';d.out=[...seats];seats.forEach(i=>{const s=S.seats[+i];if(s&&s.status==='alive')s.status='voted'})}
+function voteOut(d,seats){
+  d.stage='done';d.out=[...seats];d.changed=seats.filter(i=>S.seats[+i]?.status==='alive');
+  d.changed.forEach(i=>{S.seats[+i].status='voted'});
+}
 // выполняет команду судьи и говорит, надо ли сохранить игру
 function judgeCommand(m){
   if(!Object.hasOwn(J,m.a)||(!NO_SEAT.has(m.a)&&!(Number.isInteger(m.i)&&m.i>=0&&m.i<S.seats.length)))return false;
@@ -150,11 +159,23 @@ function judgeCommand(m){
   J[m.a](m);return true;
 }
 // Пульт отправляет на сервер только изменённые поля, поэтому одновременные правки судьи и пульта не затирают друг друга.
-function diffState(a,b,path=[],out=[]){
+function diffState(a,b,path=[],out=[],owner){
   if(JSON.stringify(a)===JSON.stringify(b))return out;
-  const same=a&&b&&typeof a==='object'&&typeof b==='object'&&Array.isArray(a)===Array.isArray(b)&&(!Array.isArray(a)||a.length===b.length);
-  if(same)new Set([...Object.keys(a),...Object.keys(b)]).forEach(k=>diffState(a[k],b[k],[...path,k],out));
-  else out.push([path,b]);
+  if(path.length===2){
+    if(path[0]==='roster')owner=a?.id;
+    if(path[0]==='seats')owner=a?.pid;
+  }
+  const same=a&&b&&typeof a==='object'&&typeof b==='object'&&Array.isArray(a)===Array.isArray(b)
+    &&(!Array.isArray(a)||a.length===b.length)&&Object.keys(a).every(k=>Object.hasOwn(b,k));
+  if(same)new Set([...Object.keys(a),...Object.keys(b)]).forEach(k=>diffState(a[k],b[k],[...path,k],out,owner));
+  else out.push([path,b,{value:a,owner}]);
   return out;
 }
-function applyOps(o,ops){ops.forEach(([p,v])=>{let x=o;p.slice(0,-1).forEach(k=>{x=x[k]});x[p[p.length-1]]=v})}
+function applyOps(state,ops){
+  const owners={roster:state.roster.map(p=>p.id),seats:state.seats.map(s=>s.pid)};
+  for(const [path,value,expected] of ops){
+    if(expected?.owner!==undefined&&owners[path[0]][path[1]]!==expected.owner)continue;
+    const target=path.slice(0,-1).reduce((node,key)=>node?.[key],state);
+    if(target&&typeof target==='object')target[path.at(-1)]=structuredClone(value);
+  }
+}

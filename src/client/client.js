@@ -5,7 +5,8 @@ const MODE = route.endsWith('/panel') ? 'panel'
   : route.endsWith('/win-civilians') ? 'red'
   : route.endsWith('/win-mafia') ? 'black'
   : location.hash === '#wait' ? 'wait' : 'overlay';
-const screenRoom = new URLSearchParams(location.search).get('room');
+const screenRoom = /^[a-f0-9]{32}$/.test(location.hash.slice(1))
+  ? location.hash.slice(1) : new URLSearchParams(location.search).get('room');
 const IC={
   shot:'<svg viewBox="0 0 24 24" class="ic-shot"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="1.5"/><path d="M12 2v5M12 17v5M2 12h5M17 12h5"/></svg>',
   hat:'<svg viewBox="0 0 24 24" class="ic-hat"><path d="M6 16c0-3.6.7-7.3 2.3-9.1.8-.9 2-.7 2.7 0 .5.5 1.5.5 2 0 .7-.7 1.9-.9 2.7 0C17.3 8.7 18 12.4 18 16c-1.8.6-3.8.9-6 .9s-4.2-.3-6-.9z"/><path d="M2 16.2c2.6 1.5 6 2.3 10 2.3s7.4-.8 10-2.3c-.4 2.1-4.6 3.8-10 3.8S2.4 18.3 2 16.2z"/><path class="hb" d="M6.2 13.6c1.8.6 3.7.9 5.8.9s4-.3 5.8-.9v1.6c-1.8.6-3.7.9-5.8.9s-4-.3-5.8-.9z"/></svg>',
@@ -162,43 +163,67 @@ const Net = (() => {
   let socket;
   let retry;
   let status = 'connecting';
+  let ready = false;
+  let session = null;
+  let sessionUntil = 0;
 
   function setStatus(value) {
     status = value;
     statuses.forEach(listener => listener(value));
   }
 
-  function connect(params) {
+  function open(params) {
     clearTimeout(retry);
+    ready = false;
     if (socket) {
+      socket.onopen = null;
       socket.onclose = null;
       socket.onmessage = null;
       socket.close();
     }
     setStatus('connecting');
-    const endpoint = BASE.replace(/^http/, 'ws') + '/ws?' + new URLSearchParams(params);
+    const endpoint = BASE.replace(/^http/, 'ws') + '/ws?' + new URLSearchParams({ role: params.role });
+    const useSession = params.role === 'host' && session && Date.now() < sessionUntil;
     socket = new WebSocket(endpoint);
     socket.onopen = () => {
-      setStatus('ok');
-      opened.forEach(listener => listener());
+      const auth = useSession ? { session } : { key: params.key, room: params.room };
+      socket.send(JSON.stringify({ kind: 'auth', ...auth }));
     };
     socket.onmessage = event => {
       try {
         const message = JSON.parse(event.data);
-        if (message?.app === 'mafiahud') messages.forEach(listener => listener(message));
+        if (message?.app !== 'mafiahud') return;
+        if (message.kind === 'ready') {
+          session = message.session;
+          sessionUntil = Date.now() + (message.sessionMs || 0) - 5000;
+          ready = true;
+          setStatus('ok');
+          opened.forEach(listener => listener());
+        } else if (ready) messages.forEach(listener => listener(message));
       } catch (error) {
         console.error('Не удалось обработать сообщение HUD:', error);
       }
     };
     socket.onclose = event => {
-      setStatus(event.code === 4401 ? 'badkey' : 'off');
-      if (event.code !== 4401) retry = setTimeout(() => connect(params), 2000);
+      ready = false;
+      if (event.code === 4408 || (event.code === 4401 && useSession)) {
+        session = null;
+        open(params);
+      } else if (event.code === 4401 || event.code === 4429) {
+        setStatus(event.code === 4401 ? 'badkey' : 'limited');
+      } else {
+        setStatus('off');
+        retry = setTimeout(() => open(params), 2000);
+      }
     };
   }
 
-  const online = () => socket?.readyState === WebSocket.OPEN;
+  const online = () => ready && socket?.readyState === WebSocket.OPEN;
   return {
-    connect,
+    connect(params) {
+      session = null;
+      open(params);
+    },
     online,
     send(message) {
       if (online()) socket.send(JSON.stringify(message));

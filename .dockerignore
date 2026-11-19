@@ -1,9 +1,5 @@
 *
-!mafia-hud.html
-!hud/
-!hud/**
-!judge/server.js
-!judge/game.js
-!judge/store.js
-!judge/mu.js
-!judge/judge.html
+!package.json
+!package-lock.json
+!src/
+!src/**

@@ -1,0 +1,14 @@
+{
+  "name": "mafia-hud",
+  "version": "1.0.0",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.js\""
+  },
+  "dependencies": {
+    "ws": "8.23.0"
+  }
+}

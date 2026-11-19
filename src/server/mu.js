@@ -78,9 +78,23 @@ function parseResults(html) {
 async function download(path) {
   const res = await fetch(MU + path, { redirect: 'manual', signal: AbortSignal.timeout(15000), headers: { 'user-agent': 'mafia-hud' } });
   if (res.status !== 200) throw new Error(res.status === 404 ? 'MafiaUniverse не нашёл такую страницу' : 'MafiaUniverse ответил ' + res.status);
-  const html = await res.text();
-  if (html.length > MAX_PAGE) throw new Error('Страница MafiaUniverse слишком большая');
-  return html;
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  const chunks = [];
+  let size = 0;
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > MAX_PAGE) throw new Error('Страница MafiaUniverse слишком большая');
+      chunks.push(decoder.decode(value, { stream: true }));
+    }
+    return chunks.join('') + decoder.decode();
+  } finally {
+    await reader.cancel().catch(() => {});
+    reader.releaseLock();
+  }
 }
 
 // what: 'game' — итоги игры по её коду, 'results' — итоговая таблица турнира по номеру
@@ -91,4 +105,7 @@ async function fetchShow(what, id) {
   throw new Error('Неверный код игры или номер турнира');
 }
 
-module.exports = { fetchShow, parseGame, parseResults };
+const validRequest = (what, id) => typeof id === 'string' &&
+  (what === 'game' ? GAME_ID.test(id) : what === 'results' && TOURNAMENT_ID.test(id));
+
+module.exports = { fetchShow, validRequest, parseGame, parseResults };

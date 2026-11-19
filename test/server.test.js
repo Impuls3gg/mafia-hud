@@ -1,5 +1,7 @@
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
+const { WebSocket: WsClient } = require('ws');
+const { createAccess } = require('../src/server/access');
 const { sleep, room, startServer, connect, until, maskedFrame, rawClient } = require('./helpers');
 
 const SECRET = 'correct-horse';
@@ -77,4 +79,40 @@ test('ограничивает число подключений к комнат
   const hud = (await until(() => game(host))).S.judge.hud;
   for (let i = 0; i < 8; i++) assert.ok((await connect(t, server.url(hud, 'screen'))).ws);
   assert.equal(typeof await connect(t, server.url(hud, 'screen')), 'number');
+});
+
+test('вход требует сообщение авторизации, сессия переживает перезапуск, чужой Origin отклоняется', async t => {
+  const server = await startServer(t, SECRET);
+  const { address } = server.url('', 'host');
+  const foreignStatus = await new Promise((resolve, reject) => {
+    const foreign = new WsClient(address, { origin: 'https://other.example' });
+    foreign.on('unexpected-response', (_, res) => {
+      res.resume();
+      resolve(res.statusCode);
+    });
+    foreign.on('error', reject);
+  });
+  assert.equal(foreignStatus, 403);
+  const inUrl = { address: address + '&key=' + SECRET, auth: {} };
+  assert.equal(await connect(t, inUrl), 4401);
+  const host = await hostFor(t, server);
+  const session = host.texts().map(JSON.parse).find(m => m.kind === 'ready').session;
+  assert.ok(session);
+  await server.stop();
+  const next = await startServer(t, SECRET, server.data, server.port);
+  const reconnect = await connect(t, { address: next.url('', 'host').address, auth: { session } });
+  assert.equal(reconnect.texts().map(JSON.parse).find(m => m.kind === 'ready').session, session);
+  assert.ok(game(reconnect)?.S);
+});
+
+test('попытки входа ограничены, выданная сессия имеет срок действия', t => {
+  const clock = t.mock.method(Date, 'now', () => 1780000000000);
+  const access = createAccess(SECRET, {});
+  const session = access.credentials().session;
+  for (let i = 0; i < 12; i++) assert.equal(access.refuse('host', { key: 'wrong' }, 'local'), 4401);
+  assert.equal(access.refuse('host', { key: SECRET }, 'local'), 4429);
+  assert.equal(access.refuse('host', { session }, 'local'), 0);
+  clock.mock.mockImplementation(() => 1780000000000 + 30 * 60 * 1000);
+  assert.equal(access.refuse('host', { session }, 'local'), 4401);
+  assert.equal(access.refuse('host', { key: SECRET }, 'local'), 0);
 });

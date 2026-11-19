@@ -366,7 +366,8 @@ function draw(){
   $('notes').disabled=!panelOn;
 }
 function connect(){
-  ws=new WebSocket(location.origin.replace(/^http/,'ws')+'/ws?room='+encodeURIComponent(room)+'&role=judge');
+  ws=new WebSocket(location.origin.replace(/^http/,'ws')+'/ws?role=judge');
+  ws.onopen=()=>ws.send(JSON.stringify({kind:'auth',room}));
   ws.onmessage=e=>{
     const m=JSON.parse(e.data);
     if(m.kind==='peers'){
@@ -374,7 +375,10 @@ function connect(){
       setConn(panelOn?'ok':'bad',panelOn?'На связи':'Пульт не подключён');
       if(panelOn&&!was)ws.send(JSON.stringify({kind:'hello'}));
       draw();
+    }else if(m.kind==='error'){
+      setConn('bad',m.error);
     }else if(m.kind==='state'){
+      if(panelOn)setConn('ok','На связи');
       // пульт старой версии не присылает протокол
       m.days=(m.days&&m.days.length?m.days:[{noms:[]}]).map(d=>Object.assign({stage:'vote',revote:[],tied:[],out:[]},d));
       m.timer=m.timer||{running:false,remain:60000,total:60000,speaker:''};

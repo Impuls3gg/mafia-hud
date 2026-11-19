@@ -3,8 +3,8 @@
 const assert = require('node:assert/strict');
 const http = require('node:http');
 const { test } = require('node:test');
-const { parseGame, parseResults } = require('../mu');
-const { startServer, connect, until, findChrome, openPage } = require('./helpers');
+const { parseGame, parseResults } = require('../src/server/mu');
+const { startServer, connect, until, hostSend, findChrome, openPage } = require('./helpers');
 
 // сайт отдаёт кириллицу HTML-сущностями
 const enc = s => [...s].map(c => c.charCodeAt(0) > 127 ? `&#x${c.charCodeAt(0).toString(16).toUpperCase()};` : c).join('');
@@ -50,23 +50,23 @@ test('пульт загружает итоги с MafiaUniverse, и худ их 
   t.after(() => { delete process.env.MU_ORIGIN; });
 
   const server = await startServer(t, 'pw');
-  const host = await connect(t, `ws://localhost:${server.port}/ws?role=host&key=pw`);
+  const host = await connect(t, server.url('', 'host', 'pw'));
   const messages = () => host.texts().map(x => JSON.parse(x));
   const S = await until(() => messages().find(m => m.kind === 'game')?.S);
   const screen = await connect(t, server.url(S.judge.hud, 'screen'));
   screen.ws.send(JSON.stringify({ app: 'mafiahud', kind: 'hello', mode: 'overlay' }));
   const view = () => screen.texts().map(x => JSON.parse(x)).filter(m => m.kind === 'view').at(-1)?.view;
   assert.ok(await until(() => view()));
-  const send = m => host.ws.send(JSON.stringify(m));
+  const send = hostSend(host);
   const fetched = what => messages().filter(m => m.kind === 'muFetched' && m.what === what).at(-1);
 
-  send({ kind: 'muFetch', what: 'game', id: GAME_ID });
+  send({ kind: 'muFetch', what: 'game', id: GAME_ID, mode: 'show', requestId: 1 });
   assert.ok(await until(() => fetched('game')?.ok), 'итоги игры не загрузились');
   assert.equal(fetched('game').rows, 10);
   send({ kind: 'patch', seq: 1, ops: [[['scene'], 'gameres']] });
   assert.ok(await until(() => view().scene === 'gameres' && view().show?.title === 'Тур 3 стол 1'), 'худ не получил итоги игры');
 
-  send({ kind: 'muFetch', what: 'results', id: '777' });
+  send({ kind: 'muFetch', what: 'results', id: '777', mode: 'show', requestId: 2 });
   assert.ok(await until(() => fetched('results')?.ok));
   send({ kind: 'patch', seq: 2, ops: [[['scene'], 'standings'], [['showPage'], 1]] });
   assert.ok(await until(() => view().scene === 'standings' && view().show?.rows.length === 30 && view().showPage === 1), 'худ не получил таблицу турнира');
@@ -74,12 +74,40 @@ test('пульт загружает итоги с MafiaUniverse, и худ их 
   send({ kind: 'patch', seq: 3, ops: [[['scene'], 'game']] });
   assert.ok(await until(() => view().scene === 'game' && view().show === null), 'итоги не нужны экрану игры');
 
-  send({ kind: 'muFetch', what: 'results', id: '../etc' });
+  send({ kind: 'muFetch', what: 'results', id: '../etc', mode: 'show', requestId: 3 });
   assert.ok(await until(() => fetched('results')?.ok === false), 'неверный номер турнира не отклонён');
   assert.match(fetched('results').error, /Неверный/);
-  send({ kind: 'muFetch', what: 'game', id: '99999999-2222-3333-4444-555555555555' });
+  send({ kind: 'muFetch', what: 'game', id: '99999999-2222-3333-4444-555555555555', mode: 'show', requestId: 4 });
   assert.ok(await until(() => fetched('game')?.ok === false));
   assert.match(fetched('game').error, /не нашёл/);
+});
+
+test('поздние итоги первой игры не заменяют вторую на OBS', async t => {
+  const secondId = 'aaaaaaaa-2222-3333-4444-555555555555';
+  let waiting;
+  const fake = http.createServer((req, res) => {
+    if (req.url.endsWith(GAME_ID)) { waiting = res; return; }
+    if (req.url.endsWith(secondId)) return res.end(GAME_PAGE);
+    res.writeHead(404).end();
+  });
+  await new Promise(resolve => fake.listen(0, resolve));
+  t.after(() => { fake.closeAllConnections(); fake.close(); });
+  process.env.MU_ORIGIN = `http://localhost:${fake.address().port}`;
+  t.after(() => { delete process.env.MU_ORIGIN; });
+  const server = await startServer(t, 'pw');
+  const host = await connect(t, server.url('', 'host', 'pw'));
+  const messages = () => host.texts().map(JSON.parse);
+  const send = message => host.ws.send(JSON.stringify(message));
+  const request = (id, requestId) => send({ kind: 'muFetch', what: 'game', id, requestId, mode: 'show' });
+  const state = () => messages().filter(m => m.kind === 'game').at(-1)?.S;
+  request(GAME_ID, 1);
+  assert.ok(await until(() => waiting));
+  request(secondId, 2);
+  assert.ok(await until(() => state()?.show?.game?.id === secondId));
+  waiting.end(GAME_PAGE);
+  assert.ok(await until(() => messages().find(m => m.kind === 'muFetched' && m.requestId === 1 && m.ok)));
+  assert.equal(state().show.game.id, secondId);
+  assert.equal(state().scene, 'gameres');
 });
 
 test('пульт: вывести таблицу по id турнира, обновить её и выгрузить результаты игры по ссылке', { skip: findChrome() ? false : 'нужен Chrome: укажите путь в CHROME_PATH' }, async t => {
@@ -123,7 +151,7 @@ test('пульт: вывести таблицу по id турнира, обно
 
   // уже загруженная таблица выводится сразу, а свежая догружается следом
   await page.run("document.querySelector('[data-a=showRes]').click()");
-  assert.equal(await page.run("S.scene"), 'standings', 'загруженная таблица не показана сразу');
+  assert.ok(await until(() => page.run("S.scene==='standings'")), 'загруженная таблица не показана');
   assert.ok(await until(() => hits.results === 3), 'свежая таблица не догрузилась');
 
   await page.run("document.getElementById('shGameUrl').value='https://example.com/abc';document.querySelector('[data-a=showGame]').click()");

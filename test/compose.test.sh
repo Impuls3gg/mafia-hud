@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 # Собирает настоящие контейнеры и проверяет оба режима: по IP и с HTTPS. Порты 80 и 443 должны быть свободны.
-# Нужны Docker и curl. Запуск: bash judge/test/compose.test.sh
+# Нужны Docker и curl. Запуск: bash test/compose.test.sh
 set -u
 
-judge="$(cd "$(dirname "$0")/.." && pwd)"
+deploy="$(cd "$(dirname "$0")/../deploy" && pwd)"
 project=mafia-judge-test
 work="$(mktemp -d)"
 secret=test-secret
 failed=0
 
-mkdir "$work/judge"
-cp "$judge/server.js" "$judge/game.js" "$judge/store.js" "$judge/mu.js" "$judge/judge.html" "$judge/Dockerfile" "$judge/compose.yaml" "$judge/Caddyfile" "$work/judge/"
-cp "$judge/../mafia-hud.html" "$judge/../.dockerignore" "$work/"
-cp -r "$judge/../hud" "$work/"
-cd "$work/judge" || exit 1
+mkdir "$work/deploy"
+cp "$deploy/Dockerfile" "$deploy/compose.yaml" "$deploy/Caddyfile" "$work/deploy/"
+cp "$deploy/../.dockerignore" "$deploy/../package.json" "$deploy/../package-lock.json" "$work/"
+cp -r "$deploy/../src" "$work/"
+cd "$work/deploy" || exit 1
 
 had_node="$(docker images -q node:24-alpine)"
 had_caddy="$(docker images -q caddy:2-alpine)"
-compose() { docker compose -f "$work/judge/compose.yaml" -p "$project" --profile https "$@"; }
+compose() { docker compose -f "$work/deploy/compose.yaml" -p "$project" --profile https "$@"; }
 cleanup() {
   cd /
   compose down -v --rmi local >/dev/null 2>&1
@@ -36,7 +36,11 @@ start() {
 websocket() {
   docker run --rm --network host -e NODE_TLS_REJECT_UNAUTHORIZED=0 node:24-alpine node --no-warnings -e '
 const [base, secret] = process.argv.slice(1);
-const open = params => new WebSocket(base + "/ws?" + new URLSearchParams(params));
+function open({role, ...credentials}) {
+  const ws = new WebSocket(base + "/ws?role=" + role);
+  ws.addEventListener("open", () => ws.send(JSON.stringify({kind:"auth", ...credentials})));
+  return ws;
+}
 function waitMessage(ws, check) {
   return new Promise(resolve => ws.addEventListener("message", event => {
     const m = JSON.parse(event.data);
@@ -53,7 +57,8 @@ const timeout = setTimeout(() => process.exit(1), 8000);
   const host = open({role:"host",key:secret});
   const {S} = await waitMessage(host, m => m.kind === "game" && m.hello);
   const screen = open({role:"screen",room:S.judge.hud});
-  screen.onopen = () => action(screen,{kind:"hello"});
+  await waitMessage(screen, m => m.kind === "ready");
+  action(screen,{kind:"hello"});
   await waitMessage(screen, m => m.kind === "view");
 
   const largePhoto = "data:image/jpeg;base64," + "A".repeat(250000);
@@ -62,7 +67,8 @@ const timeout = setTimeout(() => process.exit(1), 8000);
   await gotPhoto;
 
   const judge = open({role:"judge",room:S.judge.room});
-  judge.onopen = () => action(judge,{kind:"hello"});
+  await waitMessage(judge, m => m.kind === "ready");
+  action(judge,{kind:"hello"});
   const before = await waitMessage(judge, m => m.kind === "state");
   const afterFoul = waitMessage(screen, m => m.kind === "view" && m.view.seats[0].fouls !== before.seats[0].fouls);
   action(judge,{kind:"cmd",a:"foul",i:0,d:before.seats[0].fouls >= 4 ? -1 : 1});
@@ -78,9 +84,10 @@ want=ok
 # Меняет название игры через пульт на сервере или, без аргумента, читает его.
 game_title() {
   docker run --rm --network host node:24-alpine node --no-warnings -e "
-const ws=new WebSocket('ws://localhost/ws?role=host&key=$secret');
+const ws=new WebSocket('ws://localhost/ws?role=host');
+ws.onopen=()=>ws.send(JSON.stringify({kind:'auth',key:'$secret'}));
 ws.onmessage=e=>{const m=JSON.parse(e.data);if(m.kind!=='game')return;
-  if('$1'&&m.hello){ws.send(JSON.stringify({kind:'patch',seq:1,ops:[[['title'],'$1']]}));return}
+  if('$1'&&m.hello){ws.send(JSON.stringify({kind:'patch',client:require('node:crypto').randomBytes(16).toString('hex'),seq:1,revision:m.S.revision,ops:[[['title'],'$1',{value:m.S.title}]]}));return}
   console.log(m.S.title);process.exit(0)};
 setTimeout(()=>{console.log('timeout');process.exit(1)},5000);
 " 2>/dev/null | tail -1

@@ -9,6 +9,7 @@ function startPanel(){
     <nav class="p-tabs" aria-label="Страницы пульта">${PANEL_TABS.map(([k,t])=>`<a href="${tabHref(k)}" data-tab="${k}">${t}</a>`).join('')}</nav>
     <span class="p-net conn"><span class="dot" id="hDot"></span><span id="hSt"></span></span>
   </header>
+  <div id="syncError" class="muted" role="alert" hidden></div>
   <section class="page p-grid" data-page="game" aria-label="Игра">
     <div>
       <div class="box"><h2>Экран худа</h2>
@@ -135,8 +136,6 @@ function startPanel(){
       return;
     }
     Net.send({ kind: 'photo', pid: id, data: data || null });
-    if (data) photos[id] = data;
-    else delete photos[id];
   }
   function processImage(file){
     return new Promise((res,rej)=>{
@@ -155,7 +154,7 @@ function startPanel(){
   const A={
     accent(el){S.accent=el.dataset.c},
     accentReset(){S.accent=ACCENT_DEF},
-    scene(el){S.scene=el.dataset.s},
+    scene(el){Net.send({kind:'muCancel'});S.scene=el.dataset.s},
     uiReset(){S.ui=Object.assign({},UI_DEF)},
     addNight(){S.nights.push({shot:'',check:'',don:''})},
     delNight(el){S.nights.splice(+el.dataset.k,1);if(!S.nights.length)S.nights.push({shot:'',check:'',don:''})},
@@ -174,10 +173,10 @@ function startPanel(){
       if($('#shGameUrl').value.trim()&&!link){showSt.game='В ссылке нет кода игры. Скопируйте адрес страницы игры на MafiaUniverse.';return}
       const id=link||$('#shGame').value;
       if(!id){showSt.game='Выберите игру из списка или вставьте ссылку на неё.';return}
-      showNow('game',id,'gameres');
+      showNow('game',id);
     },
-    showRes(){const id=tourId();if(!id){showSt.results='Укажите id турнира или ссылку на него.';return}showNow('results',id,'standings')},
-    refRes(){const r=(S.show||{}).results,id=tourId()||(r&&r.id);if(!id){showSt.results='Сначала выведите итоговую таблицу.';return}showSt.results='Обновляю…';Net.send({kind:'muFetch',what:'results',id})},
+    showRes(){const id=tourId();if(!id){showSt.results='Укажите id турнира или ссылку на него.';return}showNow('results',id)},
+    refRes(){const r=(S.show||{}).results,id=tourId()||(r&&r.id);if(!id){showSt.results='Сначала выведите итоговую таблицу.';return}requestShow('results',id,'refresh')},
     pgPrev(){S.showPage=Math.max(0,(+S.showPage||0)-1)},
     pgNext(){const n=((S.show||{}).results||{rows:[]}).rows.length;S.showPage=Math.min(Math.max(0,Math.ceil(n/RES_PAGE)-1),(+S.showPage||0)+1)},
     foulPlus(el){const s=S.seats[+el.dataset.i];s.fouls=Math.min(4,(+s.fouls||0)+1)},
@@ -188,16 +187,14 @@ function startPanel(){
       lines.forEach(n=>S.roster.push({id:newId(),nick:n}));$('#bulk').value=''},
     delPerson(el){const id=el.dataset.id,p=person(id);if(!p)return;
       if(!confirm(`Удалить игрока «${p.nick}» из списка турнира?`))return;
-      S.roster=S.roster.filter(r=>r.id!==id);S.seats.forEach(s=>{if(s.pid===id)s.pid=''});[id,...roleKeys(id)].forEach(k=>setPhoto(k,null))},
+      removePlayer(S,id);
+      syncGame({kind:'deletePlayer',pid:id})},
     delPhoto(el){setPhoto(el.dataset.id,null)},
     // список турнира целиком: места освобождаются, фото удаляются; турнир MafiaUniverse остаётся, и импорт заведёт игроков заново
     delAll(){
       if(!S.roster.length)return;
-      if(!Net.online()){alert('Нет связи с сервером, игроки не удалены.');return}
       if(!confirm(`Удалить всех игроков турнира (${S.roster.length})? Места освободятся, фото игроков удалятся.`))return;
-      const keys=S.roster.flatMap(r=>[r.id,...roleKeys(r.id)]);
       S.roster=[];S.seats.forEach(s=>{s.pid=''});
-      keys.forEach(k=>{if(photos[k])setPhoto(k,null)});
     }
   };
   let pendingFocus=null;
@@ -222,7 +219,7 @@ function startPanel(){
     if(e.target.type!=='file')return;
     const id=e.target.dataset.id,file=e.target.files&&e.target.files[0];e.target.value='';
     if(!file)return;
-    try{setPhoto(id,await processImage(file));commit()}catch(err){alert(err.message)}
+    try{const data=await processImage(file);if(person(id.split('.')[0]))setPhoto(id,data)}catch(err){alert(err.message)}
   });
   $('#nights').addEventListener('change',e=>{
     const k=+e.target.dataset.k,f=e.target.dataset.f;
@@ -241,7 +238,11 @@ function startPanel(){
   $('#fGame').addEventListener('input',e=>{const n=parseInt(e.target.value,10);S.game=isNaN(n)||n<0?0:n;commit()});
 
   /* ---- рассадка из MafiaUniverse: закладка присылает все игры турнира, пульт сажает игроков выбранного стола ---- */
-  function resetGame(){S.seats.forEach(s=>{s.role='';s.status='alive';s.fouls=0;s.bonus=0;s.pen=0;s.tech=0});S.nights=[{shot:'',check:'',don:''}];S.scene='game';Object.assign(S,protocolDefaults())}
+  function resetGame(){
+    Net.send({kind:'muCancel'});
+    S.seats.forEach(s=>{s.role='';s.status='alive';s.fouls=0;s.bonus=0;s.pen=0;s.tech=0});
+    S.nights=[{shot:'',check:'',don:''}];S.scene='game';Object.assign(S,protocolDefaults());
+  }
   const muList=()=>S.mu?S.mu.games.filter(g=>g.table===S.mu.table):[];
   const muTables=()=>S.mu?[...new Set(S.mu.games.map(g=>g.table))].sort((a,b)=>a-b):[];
   const inProgress=()=>S.seats.some(s=>s.role||s.status!=='alive'||+s.fouls||+s.bonus||+s.pen||+s.tech)||S.nights.some(n=>n.shot||n.check||n.don)
@@ -300,24 +301,32 @@ function startPanel(){
       seats:S.seats.map((s,i)=>{const p=person(s.pid);return {n:i+1,nick:p?(p.mu||p.nick):'',role:s.role||'',fouls:+s.fouls||0,b:scoreOf(s.bonus),p:scoreOf(s.pen),t:scoreOf(s.tech)}}),
       note:[notes,votes.length?'Голосования:\n'+votes.join('\n'):''].filter(Boolean).join('\n\n')};
   };
-  const showSt={game:'',results:''},showNext={game:false,results:false}; // showNext: после загрузки переключить худ на этот экран
+  const showSt={game:'',results:''},showRequests={};
+  let requestId=0;
   const tourId=()=>($('#shTour').value.match(/(\d+)\/?\s*$/)||[])[1]||'';
-  // уже загруженные итоги показываются сразу, а свежие догружаются следом; иначе экран переключится, когда итоги придут
-  function showNow(what,id,scene){
-    const have=(S.show||{})[what];
-    if(have&&have.id===id){S.scene=scene;if(what==='results')S.showPage=0;showSt[what]='Обновляю…'}
-    else{showSt[what]='Загружаю…';showNext[what]=true}
-    Net.send({kind:'muFetch',what,id});
+  function requestShow(what,id,mode){
+    if(!Net.online()){showSt[what]='Нет связи с сервером. Повторите запрос после подключения.';return}
+    const request={kind:'muFetch',what,id,mode,requestId:++requestId};
+    showRequests[what]=request;
+    showSt[what]=mode==='refresh'?'Обновляю…':'Загружаю…';
+    Net.send(request);
   }
-  // заранее, без показа: таблица турнира и выбранная игра, чтобы кнопки вывода срабатывали сразу
-  const prefetch=(what,id)=>{const have=(S.show||{})[what];if(id&&Net.online()&&!(have&&have.id===id))Net.send({kind:'muFetch',what,id})};
+  const showNow=(what,id)=>requestShow(what,id,'show');
+  const prefetch=(what,id)=>{if(id&&Net.online())Net.send({kind:'muFetch',what,id,mode:'prefetch',requestId:++requestId})};
   $('#shGame').addEventListener('change',e=>prefetch('game',e.target.value));
   $('#shTour').addEventListener('change',()=>prefetch('results',tourId()));
   Net.on(m=>{
-    if(m.kind!=='muFetched')return;
+    if(m.kind!=='muFetched'||showRequests[m.what]?.requestId!==m.requestId||showRequests[m.what]?.id!==m.id)return;
+    delete showRequests[m.what];
     showSt[m.what]=m.ok?`Загружено: ${m.title||''}, строк ${m.rows}.`:m.error;
-    if(showNext[m.what]){showNext[m.what]=false;if(m.ok){S.scene=m.what==='game'?'gameres':'standings';if(m.what==='results')S.showPage=0;commit()}}
-    if(m.ok&&m.what==='results'){const n=((S.show||{}).results||{rows:[]}).rows.length;S.showPage=Math.min(+S.showPage||0,Math.max(0,Math.ceil(n/RES_PAGE)-1))} // обновление не сбрасывает страницу
+    renderFn();
+  });
+  Net.onStatus(status=>{
+    if(status!=='off')return;
+    for(const what of Object.keys(showRequests)){
+      delete showRequests[what];
+      showSt[what]='Связь прервалась. Повторите загрузку после подключения.';
+    }
     renderFn();
   });
   function renderShow(){
@@ -379,7 +388,7 @@ function startPanel(){
   $('#pvBtn').addEventListener('click',()=>{
     pvOn=!pvOn;$('#pvWrap').style.display=pvOn?'block':'none';$('#pvBtn').textContent=pvOn?'Скрыть превью':'Показать превью';
     const pv=$('#pv');
-    if(pvOn&&!pv.firstChild){const f=document.createElement('iframe');f.src=BASE+'/hud?room='+S.judge.hud;f.title='Превью оверлея';pv.appendChild(f);fitPv()}
+    if(pvOn&&!pv.firstChild){const f=document.createElement('iframe');f.src=BASE+'/hud#'+S.judge.hud;f.title='Превью оверлея';pv.appendChild(f);fitPv()}
     if(!pvOn)pv.innerHTML='';
   });
   function fitPv(){const pv=$('#pv'),f=pv.querySelector('iframe');if(f)f.style.transform=`scale(${pv.clientWidth/1920})`}
@@ -398,10 +407,10 @@ function startPanel(){
   renderFn=function(){
     setVal($('#jLink'), BASE + '/#' + S.judge.room);
     for (const [id, route] of [['#hLink', '/hud'], ['#rLink', '/win-civilians'], ['#bLink', '/win-mafia']]) {
-      setVal($(id), BASE + route + '?room=' + S.judge.hud);
+      setVal($(id), BASE + route + '#' + S.judge.hud);
     }
     const sorted=[...S.roster].sort((a,b)=>a.nick.localeCompare(b.nick,'ru'));
-    const opts='<option value="">— свободно —</option>'+sorted.map(r=>`<option value="${r.id}">${esc(r.nick)}</option>`).join('');
+    const opts='<option value="">— свободно —</option>'+sorted.map(r=>`<option value="${esc(r.id)}">${esc(r.nick)}</option>`).join('');
     S.seats.forEach((s,i)=>{
       const tr=tb.children[i],st=statusOf(i);
       tr.className=st!=='alive'?'out':'';
@@ -427,7 +436,7 @@ function startPanel(){
     const rl=$('#roster');
     if(sig!==rosterSig){
       rosterSig=sig;
-      rl.innerHTML=S.roster.length?S.roster.map(r=>`<div class="rr" data-id="${r.id}">
+      rl.innerHTML=S.roster.length?S.roster.map(r=>({...r,id:esc(r.id)})).map(r=>`<div class="rr" data-id="${r.id}">
         <label class="thumb" data-k="${r.id}" title="Загрузить обычное фото"><input type="file" accept="image/*" data-id="${r.id}" aria-label="Обычное фото игрока"><span>+</span></label>
         <button data-a="delPhoto" data-id="${r.id}" title="Удалить фото" aria-label="Удалить обычное фото" style="padding:1px 6px">×</button>
         <div class="rm"><div class="rt"><input class="rn" data-id="${r.id}" aria-label="Ник" style="flex:1">
@@ -448,7 +457,7 @@ function startPanel(){
       });
       const si=seatOf(id);el.querySelector('.seat').textContent=si>=0?'место '+(si+1):'';
     });
-    if(pendingFocus){const inp=rl.querySelector(`.rn[data-id="${pendingFocus}"]`);pendingFocus=null;if(inp){inp.focus();inp.select();inp.scrollIntoView({block:'nearest'})}}
+    if(pendingFocus){const inp=rl.querySelector(`.rn[data-id="${CSS.escape(pendingFocus)}"]`);pendingFocus=null;if(inp){inp.focus();inp.select();inp.scrollIntoView({block:'nearest'})}}
 
     const po=S.seats.map((s,i)=>`<option value="${i}">№${i+1} ${esc(seatNick(i))}</option>`).join('');
     $('#nights').innerHTML=S.nights.map((n,k)=>{
@@ -510,41 +519,76 @@ function startPanel(){
 
 /* ---- пульт на сервере: игру присылает сервер, сюда приходят и правки судьи ---- */
 function connectPanel(){
-  const clone=o=>JSON.parse(JSON.stringify(o));
-  let base=null,sent=null,seq=0,started=false;
+  const client=Array.from(crypto.getRandomValues(new Uint8Array(16)), b=>b.toString(16).padStart(2,'0')).join('');
+  const pending=[];
+  let base=null,draft=null,inFlight=null,seq=0,started=false,retryTimer;
   const open = key => Net.connect({ role: 'host', key });
   function login(text){
-    document.body.className='panel';
-    document.body.innerHTML=`<form class="box login" id="login"><h2>Пульт</h2>
+    if(!started)document.body.className='panel';
+    if(!document.getElementById('login'))document.body.insertAdjacentHTML('afterbegin',`<form class="box login" id="login"><h2>Пульт</h2>
       <input id="lKey" type="password" autocomplete="current-password" placeholder="Пароль сервера" aria-label="Пароль сервера" required>
-      <button>Войти</button><div class="muted" id="lSt" role="status"></div></form>`;
+      <button>Войти</button><div class="muted" id="lSt" role="status"></div></form>`);
     document.getElementById('lSt').textContent=text;
     document.getElementById('lKey').focus();
     document.getElementById('login').onsubmit=e=>{e.preventDefault();open(document.getElementById('lKey').value)};
   }
-  // Изменения считаются доставленными, когда сервер подтвердил последнее из них, а до этого повторяются.
-  // Отправленное, но не подтверждённое тоже учитывается: иначе возврат поля к прежнему значению (роль выдали и сразу сняли) не дошёл бы до сервера.
-  syncGame=()=>{
-    if(!Net.online())return;
-    const ops=diffState(base,S),key=op=>JSON.stringify(op[0]);
-    if(sent)diffState(sent,S).forEach(op=>{if(!ops.some(o=>key(o)===key(op)))ops.push(op)});
-    if(ops.length){Net.send({kind:'patch',seq:++seq,ops});sent=clone(S)}
+  function report(error=''){
+    const notice=document.getElementById('syncError');
+    if(notice){notice.textContent=error;notice.hidden=!error}
+  }
+  function flush(){
+    if(!Net.online()||!base||inFlight||retryTimer||!pending.length)return;
+    const {message}=pending[0];
+    inFlight=message.seq;
+    Net.send({...message,client,revision:base.revision});
+  }
+  syncGame=command=>{
+    if(!draft)return;
+    const ops=diffState(draft,S);
+    if(command||ops.length){
+      draft=structuredClone(S);
+      pending.push({message:structuredClone({...command||{kind:'patch',ops},seq:++seq})});
+    }
+    flush();
   };
   Net.onStatus(st=>{
-    if(st==='badkey'){if(started)location.reload();else login('Неверный пароль')}
+    if(st!=='ok'){
+      inFlight=null;
+      base=null;
+      clearTimeout(retryTimer);
+      retryTimer=null;
+    }
+    if(st==='badkey')login('Неверный пароль');
+    else if(st==='limited')login('Слишком много попыток входа. Повторите через минуту.');
     else if(st==='off'&&!started&&document.getElementById('lSt'))document.getElementById('lSt').textContent='Нет связи с сервером, повторяю…';
   });
   Net.on(m=>{
-    if(m.kind==='game'&&m.hello){
-      const unsent=base?diffState(base,S):[];
-      Object.keys(photos).forEach(k=>delete photos[k]);
-      S=m.S;base=clone(S);sent=null;seq=0;
-      applyOps(S,unsent);
+    if(m.kind==='game'){
+      if(m.hello){
+        Object.keys(photos).forEach(k=>delete photos[k]);
+        document.getElementById('login')?.remove();
+      }
+      if(inFlight!==null&&m.ack===inFlight){
+        inFlight=null;
+        if(m.error)report(m.error);
+        if(m.retry){
+          retryTimer=setTimeout(()=>{retryTimer=null;flush()},2000);
+        }else{
+          pending.shift();
+        }
+      }
+      base=m.S;
+      S=structuredClone(base);
+      for(const {message} of pending){
+        if(message.kind==='deletePlayer')removePlayer(S,message.pid);
+        else applyOps(S,message.ops);
+      }
+      draft=structuredClone(S);
       if(!started){started=true;startPanel()}
-      syncGame();renderFn();
+      flush();renderFn();
     }
-    else if(m.kind==='game'&&m.ack===seq){S=m.S;base=clone(S);sent=null;renderFn()}
     else if(m.kind==='photo'){if(m.data)photos[m.pid]=m.data;else delete photos[m.pid];renderFn()}
+    else if(m.kind==='error')report(m.error);
     else if(m.kind==='peers'&&started)document.getElementById('jSt').textContent=m.judge?'Судья на связи':'Судья ещё не зашёл';
   });
   login('');
