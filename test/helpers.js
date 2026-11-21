@@ -210,4 +210,4 @@ function killTree(child) {
   else { try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
 }
 
-module.exports = { ROOT, sleep, room, freePort, tempData, startServer, connect, until, hostSend, maskedFrame, rawClient, findChrome, openPage, devtools };
+module.exports = { ROOT, sleep, room, tempData, startServer, connect, until, hostSend, maskedFrame, rawClient, findChrome, openPage };

@@ -17,10 +17,19 @@ const fields = (value, checks) => record(value) &&
   Object.entries(checks).every(([key, check]) => check(value[key]));
 const optional = check => value => value === undefined || check(value);
 const keysAre = (value, keys) => record(value) && Object.keys(value).every(key => keys.includes(key));
-const validBallot = value => list(value, 10, item => fields(item, { i: seat, v: v => v === '' || integer(v, 10) }));
 const validSeats = value => list(value, 10, seat);
+const uniqueSeats = value => validSeats(value) && new Set(value).size === value.length;
+const validBallot = value => list(value, 10, item => fields(item, {
+  i: seat, v: v => v === '' || integer(v, 10), voters: optional(uniqueSeats),
+}) && (item.voters === undefined || item.v === item.voters.length)) &&
+  uniqueSeats(value.flatMap(item => item.voters || []));
+const deathReport = row => fields(row, {
+  i: seat, manual: value => typeof value === 'boolean', black: uniqueSeats, red: uniqueSeats, sheriff: maybeSeat,
+  dismissedNight: optional(value => integer(value, 1000) && value > 0),
+}) && !row.black.some(pick => row.red.includes(pick)) &&
+  (!row.dismissedNight || (!row.manual && !row.black.length && !row.red.length && !row.sheriff));
 const editable = new Set(['title', 'roster', 'seats', 'nights', 'ui', 'accent', 'game', 'mu', 'showFouls',
-  'scene', 'judge', 'wait', 'days', 'timer', 'lh', 'lhPu', 'lhExtra', 'notes', 'winner', 'showPage']);
+  'scene', 'judge', 'wait', 'days', 'timer', 'lh', 'lhPu', 'lhExtra', 'deathReports', 'notes', 'winner', 'showPage']);
 
 function timer(value, speech) {
   return fields(value, {
@@ -29,6 +38,7 @@ function timer(value, speech) {
     total: v => integer(v, speech ? 600000 : 86400000) && v > 0,
     left: v => integer(v, 86400000),
     [speech ? 'speaker' : 'show']: speech ? maybeSeat : v => typeof v === 'boolean',
+    ...(speech ? { restartSpeaker: optional(maybeSeat), nominated: optional(uniqueSeats) } : {}),
   });
 }
 
@@ -65,6 +75,7 @@ function results(value, game) {
 
 function validState(state) {
   if (!fields(state, {
+    // Поля прежних снимков игры.
     v: optional(integer), photoVer: optional(integer),
     revision: integer, title: text, game: integer, accent: v => typeof v === 'string' && /^#[a-f0-9]{6}$/i.test(v),
     scene: v => scenes.includes(v), showFouls: v => typeof v === 'boolean',
@@ -73,17 +84,20 @@ function validState(state) {
     seats: v => list(v, 10, s => fields(s, {
       pid: p => p === '' || id(p), role: r => roles.includes(r), status: st => statuses.includes(st),
       fouls: f => integer(f, 4), bonus: n => number(n, 0, 1.5), pen: n => number(n, 0, 1.5), tech: n => number(n, 0, 1.5),
+      techFouls: optional(fouls => list(fouls, 2, foul => foul === 3 || foul === 6)),
     })) && v.length === 10,
     nights: v => list(v, 1000, n => fields(n, { shot: maybeSeat, check: maybeSeat, don: maybeSeat })) && v.length > 0,
     days: v => list(v, 1000, d => fields(d, {
       noms: validBallot, revote: optional(validBallot), stage: optional(s => ['vote', 'revote', 'lift', 'done'].includes(s)),
       tied: optional(validSeats), out: optional(validSeats), changed: optional(validSeats),
+      nightAtStart: optional(n => integer(n, 1000)), nightAtEnd: optional(n => integer(n, 1000)),
     })) && v.length > 0,
     timer: v => timer(v, true), wait: v => timer(v, false),
     lh: v => list(v, 3, maybeSeat) && v.length === 3, lhPu: maybeSeat,
     lhExtra: optional(v => v === null || fields(v, {
       pu: seat, seats: picks => list(picks, 3, seat) && picks.length > 0 && new Set(picks).size === picks.length,
     })),
+    deathReports: optional(v => list(v, 10, deathReport) && new Set(v.map(row => row.i)).size === v.length),
     notes: text, winner: v => winners.includes(v), mu: tournament, showPage: optional(v => integer(v, 200)),
     ui: v => fields(v, {
       th: x => number(x, 120, 400), ts: x => number(x, .6, 1.8), gap: x => number(x, 0, 40),

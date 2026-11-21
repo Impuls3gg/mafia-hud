@@ -65,18 +65,49 @@ test('неверное поле или конфликт отклоняет ве�
 test('отмена голосования откатывает только изменения голосования', t => {
   const game = fixture(t).game();
   game.open();
+  game.command({ a: 'shot', i: 2 });
   for (const [i, manual] of [[0, true], [1, false]]) {
     game.command({ a: 'nom', i });
     if (manual) game.command({ a: 'status', i, v: 'voted' });
-    game.command({ a: 'vote', i, v: 7 });
   }
+  game.command({ a: 'vote', i: 0, v: 4 });
   game.command({ a: 'voteEnd' });
-  for (const i of [0, 1]) game.command({ a: 'vote', i, v: 5 });
+  game.command({ a: 'vote', i: 0, v: 4 });
   game.command({ a: 'voteEnd' });
   game.command({ a: 'lift', v: 'up' });
+  assert.equal(game.state().seats[1].status, 'voted');
   game.command({ a: 'voteReset' });
   assert.equal(game.state().seats[0].status, 'voted');
   assert.equal(game.state().seats[1].status, 'alive');
+});
+
+test('числовой ввод и поимённые голоса работают вместе в основном раунде и переголосовании', t => {
+  const files = fixture(t), game = files.game();
+  game.open();
+  const cmd = (a, fields = {}) => game.command({ a, ...fields });
+  const day = () => game.judgeState().days[0];
+  cmd('shot', { i: 9 });
+  for (const i of [1, 3, 5]) cmd('nom', { i });
+  cmd('vote', { i: 1, v: 2 });
+  assert.equal(cmd('voteVoter', { i: 3, voter: '9' }), false);
+  for (const voter of ['0', '2', '4']) cmd('voteVoter', { i: 3, voter });
+  assert.equal(day().noms[2].v, 4);
+  assert.equal(day().noms[2].voters, undefined);
+  cmd('voteVoter', { i: 1, voter: '0' });
+  assert.equal(day().noms[2].v, 6);
+  assert.equal(day().noms[2].voters.join(), '1,3,5,6,7,8');
+  for (const voter of ['1', '3']) cmd('voteVoter', { i: 1, voter });
+  cmd('voteVoter', { i: 3, voter: '6' });
+  assert.equal(cmd('voteEnd'), true);
+  assert.equal(day().stage, 'revote');
+  assert.equal(day().revote.map(n => n.i).join(), '1,3,5');
+  for (const voter of ['0', '1', '2', '3', '4']) cmd('voteVoter', { i: 1, voter });
+  cmd('voteVoter', { i: 3, voter: '' });
+  assert.equal(cmd('voteEnd'), true);
+  const restored = files.game().judgeState().days[0];
+  assert.equal(restored.revote[0].voters.join(), '0,1,2,3,4');
+  assert.equal(restored.revote[2].voters.join(), '5,6,7,8');
+  assert.equal(restored.out.join(), '1');
 });
 
 test('удаление игрока убирает обычное и ролевое фото из SQLite', t => {
@@ -112,6 +143,90 @@ test('дополнительное время и два фола записыв�
   assert.equal(files.game().state().seats[0].fouls, 3);
 });
 
+test('технические фолы удваивают второй штраф, удаляют игрока и пересчитываются при снятии', t => {
+  const files = fixture(t);
+  const game = files.game();
+  game.open();
+  const techFoul = (i, v, count, d = 1) => game.command({ a: 'techFoul', i, v, count, d });
+  assert.equal(game.command({ a: 'score', i: 0, f: 't', v: 0.2 }), true);
+  assert.equal(game.judgeState().seats[0].t, 0.2);
+  assert.equal(techFoul(0, 1, 0), false);
+  for (const [i, first, second, total] of [[0, 3, 3, 0.9], [1, 3, 6, 1.5], [2, 6, 3, 1.2], [3, 6, 6, 1.8]]) {
+    assert.equal(techFoul(i, first, 0), true);
+    assert.equal(techFoul(i, first, 0), false);
+    assert.equal(game.judgeState().seats[i].t, first / 10);
+    assert.equal(game.judgeState().seats[i].st, 'alive');
+    assert.equal(techFoul(i, second, 1), true);
+    assert.equal(game.judgeState().seats[i].t, total);
+    assert.equal(game.judgeState().seats[i].techFoulCount, 2);
+    assert.equal(game.judgeState().seats[i].fouls, 0);
+    assert.equal(game.judgeState().seats[i].st, 'removed');
+    assert.equal(game.view().seats[i].status, 'removed');
+    assert.equal(techFoul(i, 6, 2), false);
+    assert.equal(game.command({ a: 'score', i, f: 't', v: 0 }), false);
+  }
+  const restored = files.game();
+  assert.equal(restored.judgeState().seats[3].t, 1.8);
+  assert.equal(restored.view().seats[3].status, 'removed');
+
+  assert.equal(techFoul(1, 3, 2, -1), true);
+  assert.equal(game.judgeState().seats[1].t, 0.6);
+  assert.equal(game.view().seats[1].status, 'alive');
+  assert.equal(techFoul(1, 3, 1, -1), false);
+  assert.equal(techFoul(1, 6, 2, -1), false);
+  assert.equal(techFoul(1, 6, 1, -1), true);
+  assert.equal(game.judgeState().seats[1].t, 0);
+
+  game.command({ a: 'status', i: 3, v: 'removed' });
+  assert.equal(techFoul(3, 6, 2, -1), true);
+  assert.equal(game.judgeState().seats[3].t, 0.6);
+  assert.equal(game.view().seats[3].status, 'removed');
+});
+
+test('общий таймер запускается на 10 или 20 секунд и снимает выделение говорящего', t => {
+  const game = fixture(t).game();
+  game.open();
+  const timer = (op, fields = {}) => game.command({ a: 'timer', op, ...fields });
+  assert.equal(timer('speak', { v: '0', ms: 60000 }), true);
+  assert.equal(timer('countdown', { ms: 15000 }), false);
+  for (const ms of [10000, 20000]) {
+    assert.equal(timer('countdown', { ms }), true);
+    const running = game.judgeState().timer;
+    assert.equal(running.running, true);
+    assert.equal(running.total, ms);
+    assert.equal(running.speaker, '');
+    assert.ok(running.remain > 0 && running.remain <= ms);
+    assert.equal(timer('pause'), true);
+    assert.equal(timer('stop'), true);
+    assert.equal(game.judgeState().timer.remain, 0);
+    assert.equal(timer('reset'), true);
+    assert.equal(game.judgeState().timer.remain, ms);
+  }
+});
+
+test('перезапуск речи возвращает исходное время и последнего говорящего после остановки', t => {
+  const files = fixture(t);
+  const game = files.game();
+  game.open();
+  const timer = (op, fields = {}) => game.command({ a: 'timer', op, ...fields });
+  assert.equal(timer('speak', { v: '4', ms: 30000 }), true);
+  assert.equal(timer('extra', { i: 4 }), true);
+  assert.ok(game.judgeState().timer.remain > 30000);
+  assert.equal(timer('restart'), true);
+  assert.ok(game.judgeState().timer.remain <= 30000);
+  assert.equal(game.state().seats[4].fouls, 2);
+  assert.equal(timer('stop'), true);
+  assert.equal(game.judgeState().timer.remain, 0);
+  assert.equal(game.judgeState().timer.speaker, '');
+
+  const restored = files.game();
+  assert.equal(restored.command({ a: 'timer', op: 'restart' }), true);
+  assert.equal(restored.judgeState().timer.speaker, '4');
+  assert.equal(restored.judgeState().timer.total, 30000);
+  assert.equal(restored.judgeState().timer.running, true);
+  assert.equal(restored.state().seats[4].fouls, 2);
+});
+
 test('два лучших хода сохраняются независимо и переживают перезапуск', t => {
   const files = fixture(t);
   const game = files.game();
@@ -130,4 +245,64 @@ test('два лучших хода сохраняются независимо �
   assert.equal(state().pu, '1');
   assert.equal(state().lh.join(), '0,4,');
   assert.equal(state().lhExtra, null);
+});
+
+test('протокол можно записать живому игроку, а исправление отстрела сохраняет заполненную запись', t => {
+  const files = fixture(t);
+  const game = files.game();
+  game.open();
+  const command = (op, i, fields = {}) => game.command({ a: 'deathReport', op, i, ...fields });
+  const shot = v => game.command({ a: 'night', f: 'shot', k: 0, v });
+  const reports = () => game.judgeState().deathReports;
+
+  assert.equal(command('add', 2), true);
+  assert.equal(game.judgeState().seats[2].st, 'alive');
+  assert.equal(reports()[0].manual, true);
+  assert.equal(reports()[0].night, 0);
+  assert.equal(command('add', 2), false);
+  assert.equal(command('pick', 2, { field: 'black', n: 10 }), false);
+  command('pick', 2, { field: 'black', n: 8 });
+  command('pick', 2, { field: 'red', n: 8 });
+  command('pick', 2, { field: 'sheriff', n: 1 });
+  command('pick', 2, { field: 'sheriff', n: 8 });
+  assert.equal(reports()[0].black.length, 0);
+  assert.equal(reports()[0].red.join(), '8');
+  assert.equal(reports()[0].sheriff, '8');
+
+  shot('5');
+  assert.equal(reports()[0].i, '5');
+  assert.equal(reports()[0].night, 1);
+  assert.equal(game.state().deathReports.length, 1, 'пустая строка из отстрела вычисляется по ночи');
+  shot('6');
+  assert.equal(reports().some(report => report.i === '5'), false);
+  command('pick', 6, { field: 'black', n: 0 });
+  shot('');
+  const stored = files.game().judgeState().deathReports;
+  const savedShot = stored.find(report => report.i === '6');
+  assert.equal(savedShot.night, 0);
+  assert.equal(savedShot.manual, false);
+  assert.equal(savedShot.black.join(), '0');
+  assert.equal(stored.some(report => report.i === '2' && report.manual), true);
+  assert.equal(Object.hasOwn(game.view(), 'deathReports'), false);
+});
+
+test('удалённый протокол отстрела не возвращается при перезапуске и может быть добавлен вручную', t => {
+  const files = fixture(t);
+  const game = files.game();
+  game.open();
+  game.command({ a: 'night', f: 'shot', k: 0, v: '5' });
+  const report = (op, fields = {}) => game.command({ a: 'deathReport', i: 5, op, ...fields });
+  assert.equal(report('set', { field: 'black', picks: [9, 2, 9] }), true);
+  assert.equal(game.judgeState().deathReports[0].black.join(), '2,9');
+  assert.equal(report('set', { field: 'sheriff', picks: [2, 3] }), false);
+  assert.equal(report('set', { field: 'red', picks: [2, 10] }), false);
+  assert.equal(report('delete'), true);
+  assert.equal(report('pick', { field: 'red', n: 1 }), false);
+
+  const restored = files.game();
+  assert.equal(restored.judgeState().seats[5].st, 'killed');
+  assert.equal(restored.judgeState().deathReports.length, 0);
+  assert.equal(restored.command({ a: 'deathReport', op: 'add', i: 5 }), true);
+  assert.equal(restored.judgeState().deathReports[0].manual, true);
+  assert.equal(restored.judgeState().deathReports[0].black.length, 0);
 });

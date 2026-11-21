@@ -15,7 +15,6 @@ failed=0
 
 mkdir -p "$tmp/bin" "$fake/etc/systemd/system" "$app" "$legacy"
 cp "$repo/deploy/update.sh" "$app/"
-cp "$repo/judge/update.sh" "$repo/judge/server-setup.sh" "$legacy/"
 
 stub() { printf '#!/bin/sh\necho "%s $*" >> "%s/calls.log"\n%s\n' "$1" "$tmp" "${2:-}" > "$tmp/bin/$1"; }
 stub apt-get
@@ -28,8 +27,8 @@ printf '#!/bin/sh\nexit ${CURL_EXIT:-0}\n' > "$tmp/bin/curl"
 chmod +x "$tmp"/bin/*
 sed -e "s|/etc/|$fake/etc/|g" "$repo/deploy/server-setup.sh" > "$app/server-setup.sh"
 
-run() { : > "$tmp/calls.log"; PATH="$tmp/bin:$PATH" bash "$legacy/server-setup.sh" "$@" > "$tmp/out.log" 2>&1; }
-update() { : > "$tmp/calls.log"; PATH="$tmp/bin:$PATH" bash "$legacy/update.sh" "$@" > "$tmp/out.log" 2>&1; }
+run() { : > "$tmp/calls.log"; PATH="$tmp/bin:$PATH" bash "$app/server-setup.sh" "$@" > "$tmp/out.log" 2>&1; }
+update() { : > "$tmp/calls.log"; PATH="$tmp/bin:$PATH" bash "$app/update.sh" "$@" > "$tmp/out.log" 2>&1; }
 pass() { echo "ok   $1"; }
 fail() { echo "FAIL $1"; failed=1; }
 expect() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1: ожидалось [$3], получено [$2]"; fi; }

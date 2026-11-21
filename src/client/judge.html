@@ -6,7 +6,7 @@
 <meta name="robots" content="noindex">
 <title>Мафия · судья</title>
 <style>
-:root{color-scheme:dark;--red:#c41e3a;--don:#8977fe;--brass:#c9a44c;--brass-ink:#1d1607;--foul:#f2c230;--hot:#ff5a6e;--ok:#3ecf6e;--line:#2c2c34;--speak:#c5bfff}
+:root{color-scheme:dark;--red:#c41e3a;--don:#8977fe;--brass:#c9a44c;--foul:#f2c230;--hot:#ff5a6e;--ok:#3ecf6e;--line:#2c2c34;--speak:#c5bfff}
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#000;color:#e9e7e2;font:15px/1.3 'Segoe UI',Roboto,Arial,sans-serif;padding-bottom:24px}
 header{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:8px;padding:8px 12px;background:#000;border-bottom:1px solid var(--line)}
@@ -15,6 +15,19 @@ header h1{flex:1;min-width:0;font-size:16px;font-weight:600;white-space:nowrap;o
 #conn.ok{color:var(--ok)}#conn.bad{color:var(--hot)}
 #msg{padding:32px 16px;text-align:center;color:#a09d95}
 .wrap{max-width:760px;margin:0 auto;padding:0 8px}
+.judge-layout{display:grid;grid-template-areas:"timer" "nights" "reports" "game"}
+.judge-layout[hidden]{display:none}
+.judge-game{grid-area:game;min-width:0;container-type:inline-size}
+.judge-nights{grid-area:nights}
+.judge-reports{grid-area:reports}
+.judge-side{align-self:start;min-width:0;border-bottom:1px solid var(--line);padding:0 0 8px}
+.judge-side>summary{padding:9px 4px;cursor:pointer;font-size:14px;font-weight:600;color:#d3cfc5}
+@media (min-width:1180px){
+  .wrap{max-width:1520px;padding:0 12px}
+  .judge-layout{grid-template-columns:minmax(220px,250px) minmax(0,1fr) minmax(265px,300px);gap:0 12px;
+    grid-template-areas:"nights timer reports" "nights game reports";grid-template-rows:auto 1fr}
+  .judge-side{margin-top:8px;padding:0 8px 8px;border:1px solid var(--line);border-radius:8px}
+}
 h2{margin:16px 2px 6px;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#a09d95}
 button{min-height:40px;min-width:0;padding:0 8px;font:inherit;font-size:14px;color:inherit;background:#1c1c22;border:1px solid #34343c;border-radius:6px;touch-action:manipulation}
 button:disabled{opacity:.4}
@@ -23,15 +36,16 @@ select,textarea{font:inherit;color:inherit;background:#111116;border:1px solid #
 select:disabled{opacity:.45}
 /* таймер речи */
 .timer{position:sticky;top:41px;z-index:2;background:#000;padding:8px 0 6px;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"clock who" "btns btns";align-items:center;gap:6px 12px;border-bottom:1px solid var(--line)}
+.judge-layout>.timer{grid-area:timer;align-self:start;min-width:0}
 .timer .clock{grid-area:clock}.timer .who{grid-area:who}.timer .tbtns{grid-area:btns;justify-content:flex-start;align-items:center}
-.timer .hide{margin-left:auto}
+.timer-options{display:flex;flex-wrap:wrap;gap:6px 12px;margin-left:auto}
 .timer.finished .clock{color:var(--hot)}
 .clock{font:300 54px/1 'Segoe UI',Roboto,Arial,sans-serif;font-variant-numeric:tabular-nums;color:var(--speak);letter-spacing:.02em}
 .who{min-width:0;font-size:13px;color:#a09d95}
 .who b{display:block;font-size:15px;color:#e9e7e2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tbtns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .tbtns button{min-width:44px;font-size:18px}
-.tbtns #tStop{font-size:14px}
+.tbtns [data-countdown]{font-size:14px}
 .hide{display:flex;align-items:center;gap:6px;font-size:13px;color:#c9c6bf;white-space:nowrap}
 .hide input{width:18px;height:18px}
 /* таблица игроков */
@@ -39,17 +53,22 @@ table.pr{width:100%;border-collapse:collapse;table-layout:fixed}
 .pr th{font-size:12px;font-weight:600;color:#a09d95;padding:6px 2px;border:1px solid var(--line)}
 .pr td{border:1px solid var(--line);padding:2px;vertical-align:middle;height:46px}
 .pr .c-nom{width:40px}.pr .c-n{width:28px}.pr .c-f{width:92px}.pr .c-l{width:56px}.pr .c-r{width:66px}.pr .c-s{width:66px}
+.pr .c-tech{width:134px}
 /* баллы: на узком экране отдельный режим «Баллы», на широком все колонки сразу, как на MafiaUniverse */
 .pr .scol{display:none}
 body.mode-scores .pr .gcol{display:none}
 body.mode-scores .pr .scol{display:table-cell}
 .modes{display:flex;gap:4px;margin:0 0 6px}
 .modes button{flex:1;min-height:36px}
-@media (min-width:760px){.pr .scol,body.mode-scores .pr .gcol{display:table-cell}.modes{display:none}}
+@container (min-width:720px){.pr .scol,body.mode-scores .pr .gcol{display:table-cell}.modes{display:none}}
 .sc-in{width:100%;min-height:40px;padding:0 6px;font:inherit;font-size:15px;text-align:center;color:#e9e7e2;background:#111116;border:1px solid #2a2a32;border-radius:6px}
 .sc-in::placeholder{color:#55535b}
 .sc-in.set{color:#7fd17f;border-color:#2f5a2f}.sc-in.neg.set{color:#ff8a8a;border-color:#5a2f2f}
 .sc-in.bad{border-color:var(--hot);color:var(--hot)}
+.tech-total{display:grid;place-items:center}
+.tech-controls{display:grid;grid-template-columns:minmax(0,1fr) 84px;align-items:center;gap:3px}
+.tech-controls .sc-in{padding:0 1px;font-size:13px}
+.tech-steppers{display:grid;gap:1px}
 .lhtype{width:100%;min-height:42px;margin-bottom:6px;padding:0 10px;font:inherit;font-size:16px;color:inherit;background:#111116;border:1px solid #34343c;border-radius:6px}
 .pr .no{text-align:center;color:#77757d;font-size:14px}
 .pr tr.out .nick{color:#77757d;text-decoration:line-through}
@@ -78,12 +97,14 @@ body.mode-scores .pr .scol{display:table-cell}
 .fo .p{color:#7fb36b}.fo .m{color:#b07a7a}
 .fo span{min-width:20px;text-align:center;font-weight:700}
 .fo span.f3{color:#ff8c1a}.fo span.f4{color:var(--hot)}
+.fo.tech-stepper button{width:24px;min-height:26px;font-size:17px}
+.tech-stepper span{font-size:11px;white-space:nowrap}
 .pr select{width:100%;min-height:40px;padding:0 4px}
 .rc-mafia{border-left:3px solid #e8e8e8!important}.rc-don{border-left:3px solid var(--don)!important}.rc-sheriff{border-left:3px solid var(--brass)!important}.rc-civ{border-left:3px solid var(--red)!important}
 body.noroles .pr .rcell,body.noroles .res{display:none!important}
 .more td{height:auto;padding:6px;background:#0d0d11}
 .acts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:4px}
-@media (max-width:550px){
+@container (max-width:535px){
   .pr thead{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
   .pr tbody,.pr .more,.pr .more td{display:block}
   .pr .player{display:grid;grid-template-columns:28px minmax(0,.7fr) minmax(0,1.4fr) minmax(0,1fr) minmax(0,1fr);border:1px solid var(--line);margin-top:5px}
@@ -96,6 +117,8 @@ body.noroles .pr .rcell,body.noroles .res{display:none!important}
   .pr .player .rcell{grid-row:2;grid-column:5}
   .pr .player .score-bonus{grid-row:2;grid-column:1/3}
   .pr .player .score-tech{grid-row:2;grid-column:4/-1}
+  .tech-controls{grid-template-columns:minmax(0,1fr) 90px}
+  .fo.tech-stepper button{width:28px;min-height:34px}
   .acts button{padding:0 4px;font-size:13px}
 }
 /* голосование */
@@ -110,8 +133,17 @@ body.noroles .pr .rcell,body.noroles .res{display:none!important}
 .chead .cnt{min-width:28px;text-align:right;font-size:20px;font-weight:700}
 .v11{display:grid;grid-template-columns:repeat(11,minmax(0,1fr));gap:2px}
 .v11 button{min-height:38px;padding:0;font-size:14px;border-radius:4px}
+.voters{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:2px;margin-bottom:4px}
+.voters button{min-height:38px;padding:0;font-size:14px}
+.voters-note{margin-top:4px}
+.saved-ballot{margin-top:8px;font-size:13px;color:#c9c6bf}
+.saved-ballot summary{cursor:pointer}
+.saved-ballot ul{padding-left:22px}
 .vsum{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:13px;color:#a09d95;gap:8px}
 .vsum .go{background:#2b2450;border-color:#5a4fb0;color:#fff;font-weight:600}
+.vote-actions,.vote-rounds{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.vote-rounds[hidden]{display:none}
+.vote-rounds{margin-top:6px}
 .liftq{margin:4px 0 8px;font-size:15px}
 .lift{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .lift .up{background:#e64545;border-color:#e64545;color:#fff;font-weight:600}
@@ -127,8 +159,36 @@ body.noroles .pr .rcell,body.noroles .res{display:none!important}
 .act span{font-size:14px;color:#a09d95}
 .act select{min-width:0;min-height:42px;padding:0 6px}
 .act b{font-size:13px;font-weight:600;text-align:right}
-.act b.black{color:#fff}.act b.red{color:#ff7a8a}.act b.don{color:var(--don)}.act b.sheriff{color:var(--brass)}
+.act b.black{color:#fff}.act b.red{color:#ff7a8a}.act b.sheriff{color:var(--brass)}
 .nights{display:grid;gap:6px}
+.nights summary{cursor:pointer;font-weight:600}
+.judge-nights .act{grid-template-columns:57px minmax(0,1fr)}
+.judge-nights .res{grid-column:2;text-align:left}
+.judge-nights .res:empty{display:none}
+.report-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:5px;margin:0 0 8px}
+.report-form select{min-width:0;padding:0 4px;font-size:13px}
+.report-form button{padding:0 6px;font-size:13px}
+.reports{width:100%;table-layout:fixed;border-collapse:collapse}
+.reports[hidden]{display:none}
+.reports th,.reports td{padding:3px;border:1px solid var(--line)}
+.reports thead th{color:#a09d95;font-size:12px}
+.reports .report-owner{width:30%;text-align:left}
+.reports tbody th{font-size:14px}
+.report-owner small{display:block;color:#a09d95;font-size:11px;font-weight:400}
+.report-owner .report-delete{margin-top:3px;min-height:30px;padding:0 4px;font-size:11px;color:#ffb0b8}
+.reports .report-cell{display:block;width:100%;padding:3px;font-size:12px;overflow-wrap:anywhere}
+.reports .black{background:#151518;color:#e9e7e2}
+.reports .red{background:#342023;color:#ffb0b8}
+.reports .sheriff{background:#332a19;color:#f6d68a}
+.reports .report-cell[aria-expanded="true"]{border-color:var(--speak)}
+.report-edit{background:#111116}
+.report-edit-head{display:flex;justify-content:space-between;align-items:center;gap:4px;padding:3px 0;font-size:12px}
+.report-edit-head button{min-height:32px;padding:0 4px;font-size:12px}
+.report-input-form{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px;margin:4px 0}
+.report-input-form input{width:100%;min-width:0;padding:0 6px;color:inherit;background:#0d0d11;border:1px solid #34343c;border-radius:6px;font:inherit;font-size:16px}
+.report-input-form button{padding:0 6px;font-size:12px}
+.report-picks{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:4px;margin:4px 0}
+.report-empty{padding:3px 0 6px}
 .lh{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:6px}
 .lh select{min-height:42px;padding:0 6px}
 textarea{width:100%;min-height:96px;padding:8px;resize:vertical}
@@ -137,56 +197,84 @@ textarea{width:100%;min-height:96px;padding:8px;resize:vertical}
 <body>
 <header><h1 id="title">Судья</h1><span id="conn">Подключение…</span></header>
 <div id="msg">Ждём данные от пульта…</div>
-<div class="wrap" id="app" hidden>
-  <section class="timer" aria-label="Таймер речи">
+<div class="wrap judge-layout" id="app" hidden>
+  <section class="timer" aria-label="Таймер">
     <div class="clock" id="clock" aria-live="off">1:00</div>
     <div class="who" id="who">Выберите 60 или 30 секунд рядом с игроком</div>
     <div class="tbtns">
-      <button type="button" id="tPlay" aria-label="Запустить или приостановить таймер">▶</button>
-      <button type="button" id="tStop">Стоп</button>
-      <button type="button" id="tReset" aria-label="Сбросить таймер">⟳</button>
-      <label class="hide"><input type="checkbox" id="hideRoles">Скрыть роли</label>
+      <button type="button" id="tPlay" aria-label="Запустить таймер">▶</button>
+      <button type="button" id="tReset" aria-label="Перезапустить таймер">⟳</button>
+      <button type="button" data-countdown="10000" aria-label="Общий отсчёт на 10 секунд">10 с</button>
+      <button type="button" data-countdown="20000" aria-label="Общий отсчёт на 20 секунд">20 с</button>
+      <div class="timer-options">
+        <label class="hide"><input type="checkbox" id="hideRoles">Скрыть роли</label>
+        <label class="hide"><input type="checkbox" id="namedVotes">Поимённые голоса</label>
+      </div>
     </div>
   </section>
+  <details class="judge-side judge-nights" id="nightPanel">
+    <summary>Ночные действия</summary>
+    <div class="nights" id="nights"></div>
+  </details>
+  <details class="judge-side judge-reports" id="reportPanel">
+    <summary>Протоколы убитых</summary>
+    <form class="report-form" id="reportForm">
+      <select id="reportOwner" aria-label="Игрок для ручного протокола"></select>
+      <button type="submit" id="reportAdd">+ Добавить протокол</button>
+    </form>
+    <p class="muted report-empty" id="reportEmpty">Протоколов пока нет</p>
+    <table class="reports" aria-label="Протоколы убитых" id="reportTable" hidden>
+      <thead><tr><th class="report-owner" scope="col">Игрок</th><th scope="col">Красные</th><th scope="col">Чёрные</th><th scope="col">Шериф</th></tr></thead>
+      <tbody id="reportRows"></tbody>
+    </table>
+  </details>
+  <main class="judge-game">
   <h2>Игроки</h2>
   <p class="muted speech-hint">Доп. время добавляет 30 секунд и два фола. Доступно говорящему с 0 или 1 фолом.</p>
   <div class="modes" role="group" aria-label="Колонки таблицы"><button type="button" data-mode="game">Игра</button><button type="button" data-mode="scores">Баллы</button></div>
   <datalist id="dl-b"></datalist><datalist id="dl-p"></datalist>
   <table class="pr">
     <thead><tr><th class="c-nom gcol" title="Выставить на голосование">👍</th><th class="c-n">№</th><th>Игрок</th><th class="c-f gcol">Фолы</th><th class="c-l gcol" title="Лучший ход можно записать для двух игроков">ЛХ</th><th class="c-r gcol rcell">Роль</th>
-      <th class="c-s scol" title="Дополнительные баллы">+</th><th class="c-s scol" title="Минус">−</th><th class="c-s scol" title="Технический минус">Тех −</th></tr></thead>
+      <th class="c-s scol" title="Дополнительные баллы">+</th><th class="c-s scol" title="Минус">−</th><th class="c-tech scol" title="Технические фолы и штраф">Тех −</th></tr></thead>
     <tbody id="rows"></tbody></table>
   <h2 id="dayTitle">Голосование</h2>
   <div class="card" id="vote"></div>
-  <h2>Ночные действия</h2>
-  <div class="nights" id="nights"></div>
-  <h2>Победа</h2>
-  <div class="card win3" id="winner"></div>
   <h2>Заметки</h2>
   <textarea id="notes" placeholder="Заметки судьи к игре" aria-label="Заметки судьи"></textarea>
+  <h2>Результат игры</h2>
+  <div class="card win3" id="winner"></div>
+  </main>
 </div>
+<script src="/assets/timer.js"></script>
 <script>
 const ROLES=[['','—'],['civ','Мир'],['sheriff','Шер'],['mafia','Маф'],['don','Дон']];
 const STATE={killed:n=>`убит, ночь ${n}`,voted:()=>'заголосован',removed:()=>'удалён'};
 const room=location.hash.slice(1);
 const $=id=>document.getElementById(id);
-let ws=null,panelOn=false,last=null,open=null,lhOpen=null,lhDraft=null,gotAt=0; // lhOpen — у кого открыт ввод лучшего хода, lhDraft — набранные номера, чтобы быстрые нажатия не терялись
+let ws=null,panelOn=false,last=null,open=null,lhEditor=null;
 
 function setConn(cls,text){$('conn').className=cls;$('conn').textContent=text}
-function send(cmd){if(ws&&ws.readyState===1&&panelOn)ws.send(JSON.stringify(Object.assign({kind:'cmd'},cmd)))}
+function send(cmd){
+  if(!ws||ws.readyState!==1||!panelOn)return false;
+  ws.send(JSON.stringify(Object.assign({kind:'cmd'},cmd)));
+  return true;
+}
 function el(tag,props={},...kids){const e=document.createElement(tag);Object.assign(e,props);e.append(...kids);return e}
-function btn(text,cmd,{on=false,cls='',label='',disabled=false}={}){
+function btn(text,action,{on=false,cls='',label='',disabled=false}={}){
   const b=el('button',{type:'button',textContent:text,className:(cls+(on?' on':'')).trim(),disabled:!panelOn||disabled});
   if(label)b.setAttribute('aria-label',label);
-  b.onclick=()=>send(cmd);
+  b.onclick=typeof action==='function'?action:()=>send(action);
   return b;
 }
 const nickOf=i=>(last.seats[i]&&last.seats[i].nick)||'— свободно —';
-const seatOpts=(sel,blank='—')=>{sel.add(new Option(blank,''));last.seats.forEach((s,i)=>sel.add(new Option((i+1)+' '+nickOf(i),String(i))))};
+const seatOpts=(sel,blank='—')=>{sel.add(new Option(blank,''));last.seats.forEach((_,i)=>sel.add(new Option((i+1)+' '+nickOf(i),String(i))))};
 
-/* ---- таймер: сервер присылает остаток, дальше телефон считает сам ---- */
-const left=()=>{const t=last&&last.timer;if(!t)return 0;return t.running?Math.max(0,t.remain-(Date.now()-gotAt)):t.remain};
-const activeSpeaker=()=>left()>0?last.timer.speaker:'';
+/* ---- таймер ---- */
+const timerClock=createTimerClock(),timerDisplay=createTimerDisplay();
+let pendingStart=null,startRequest=0;
+const shownTimer=()=>pendingStart||last?.timer;
+const left=()=>pendingStart?Math.max(0,pendingStart.localDeadline-performance.now()):timerClock.remaining();
+const activeSpeaker=()=>left()>0?shownTimer().speaker:'';
 const fmt=ms=>{const s=Math.ceil(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
 const clock=$('clock'),timerBar=clock.parentElement;
 function tick(){
@@ -194,26 +282,35 @@ function tick(){
   const ms=left();
   const finished=ms<=0,changed=timerBar.classList.contains('finished')!==finished;
   timerBar.classList.toggle('finished',finished);
-  clock.textContent=fmt(ms);
+  const text=fmt(shownTimer().running?timerDisplay.remaining(ms):ms);
+  if(clock.textContent!==text)clock.textContent=text;
   if(!finished)return;
   $('tPlay').disabled=true;
-  $('tStop').disabled=true;
   if(!changed)return;
   drawSpeaker('');
-  const row=$('rows').querySelector('.player.speak');
-  if(row){
-    row.classList.remove('speak');
-    row.querySelector('.speech-actions .on')?.classList.remove('on');
-    row.querySelector('.speech-actions button:last-child').disabled=true;
-  }
+  drawSpeechRows();
 }
 setInterval(tick,200);
-$('tPlay').onclick=()=>send({a:'timer',op:last.timer.running?'pause':'start'});
-$('tStop').onclick=()=>send({a:'timer',op:'stop'});
-$('tReset').onclick=()=>send({a:'timer',op:'reset'});
+$('tPlay').onclick=()=>send({a:'timer',op:shownTimer().running?'stop':'start'});
+$('tReset').onclick=()=>{
+  const t=shownTimer();
+  startTimer(t.total,t.speaker||t.restartSpeaker||'','restart');
+};
+const countdownButtons=[...document.querySelectorAll('[data-countdown]')];
+function startTimer(ms,speaker='',op=speaker===''?'countdown':'speak'){
+  const now=performance.now(),request=++startRequest;
+  const startedAt=timerClock.serverTimeAt(now);
+  if(!send({a:'timer',op,v:speaker,ms,startedAt,request}))return;
+  pendingStart={request,localDeadline:now+ms,running:true,total:ms,speaker};
+  timerDisplay.show(ms);
+  drawTimerUpdate();
+}
+countdownButtons.forEach(b=>{b.onclick=()=>startTimer(+b.dataset.countdown)});
+const hasCountdown=()=>left()>0&&countdownButtons.some(b=>+b.dataset.countdown===shownTimer().total);
 // скрытые роли — настройка этого телефона, чтобы роли не подсмотрели из-за плеча
 const applyHide=()=>document.body.classList.toggle('noroles',$('hideRoles').checked);
 $('hideRoles').onchange=()=>{applyHide();draw()};
+$('namedVotes').onchange=()=>{if(last)drawVote()};
 applyHide();
 const fmtScore=v=>v>0?v.toFixed(2).replace('.',','):'';
 const fill=(id,max)=>{for(let k=1;k<=Math.round(max*10);k++)$(id).append(el('option',{value:fmtScore(k/10)}))};
@@ -237,8 +334,26 @@ function scoreInput(i,f,v,list,label){
   };
   inp.onchange=commit;
   inp.onkeydown=e=>{if(e.key!=='Enter')return;e.preventDefault();if(!commit())return;
-    const next=document.querySelector(`.sc-in[data-f="${f}"][data-i="${i+1}"]`);if(next){next.focus();next.select()}else inp.blur()};
+    const next=[...document.querySelectorAll(`.sc-in[data-f="${f}"]`)].find(field=>+field.dataset.i>i);
+    if(next){next.focus();next.select()}else inp.blur()};
   return inp;
+}
+function techCell(i,s){
+  const fouls=s.techFouls||[],count=fouls.length;
+  const score=count
+    ? el('output',{className:'sc-in neg set tech-total',textContent:'−'+fmtScore(s.t)})
+    : scoreInput(i,'t',s.t||0,'dl-p','Тех. минус');
+  const steppers=[['Мал.','малый',3],['Бол.','большой',6]].map(([text,size,v])=>{
+    const amount=fouls.filter(foul=>foul===v).length;
+    const label=size+' техфол, игрок '+(i+1);
+    const addLabel='Начислить '+label+(count===1?' · удаление':'');
+    const removeLabel='Снять '+label;
+    const add=btn('+',{a:'techFoul',i,v,count,d:1},{cls:'p',label:addLabel,disabled:count>=2});
+    const remove=btn('−',{a:'techFoul',i,v,count,d:-1},{cls:'m',label:removeLabel,disabled:amount===0});
+    add.title=addLabel;remove.title=removeLabel;
+    return el('div',{className:'fo tech-stepper'},add,el('span',{textContent:text+' '+amount}),remove);
+  });
+  return el('td',{className:'scol score-tech'},el('div',{className:'tech-controls'},score,el('div',{className:'tech-steppers'},...steppers)));
 }
 // пока судья печатает в таблице, она не перерисовывается, иначе поле потеряло бы фокус
 let rowsPending=false;
@@ -249,86 +364,133 @@ $('notes').oninput=()=>{clearTimeout(notesT);notesT=setTimeout(()=>send({a:'note
 
 function drawSpeaker(sp){
   $('who').innerHTML='';
-  $('who').append(sp===''?'Выберите 60 или 30 секунд рядом с игроком':el('span',{},'Говорит',el('b',{textContent:(+sp+1)+' · '+nickOf(+sp)})));
+  $('who').append(sp===''?(hasCountdown()?'Общий отсчёт':'Выберите 60 или 30 секунд рядом с игроком'):el('span',{},'Говорит',el('b',{textContent:(+sp+1)+' · '+nickOf(+sp)})));
 }
 function drawTimer(){
+  const {running}=shownTimer();
   drawSpeaker(activeSpeaker());
-  $('tPlay').textContent=last.timer.running?'⏸':'▶';
+  const play=$('tPlay');
+  play.textContent=running?'■':'▶';
+  play.setAttribute('aria-label',running?'Остановить и обнулить таймер':'Запустить таймер');
   document.querySelectorAll('.timer button').forEach(b=>{b.disabled=!panelOn});
-  $('tStop').disabled=!panelOn||(!last.timer.running&&activeSpeaker()==='');
   tick();
 }
-function speechButtons(i,fouls,selected){
-  const buttons=[60,30].map(sec=>btn(sec+' с',{a:'timer',op:'speak',v:String(i),ms:sec*1000},
-    {on:selected&&last.timer.total===sec*1000,label:'Речь '+sec+' секунд, игрок '+(i+1)}));
+function speechButtons(i){
+  const buttons=[60,30].map(sec=>btn(sec+' с',()=>startTimer(sec*1000,String(i)),
+    {label:'Речь '+sec+' секунд, игрок '+(i+1)}));
   const extra=btn('Доп. +30 с',{a:'timer',op:'extra',i},
-    {label:'Дополнительные 30 секунд и два фола, игрок '+(i+1),disabled:!selected||fouls>=2});
+    {label:'Дополнительные 30 секунд и два фола, игрок '+(i+1)});
   return el('div',{className:'speech-actions'},...buttons,extra);
+}
+function drawSpeechRows(){
+  const speaker=activeSpeaker(),total=shownTimer().total;
+  $('rows').querySelectorAll('.player').forEach((row,i)=>{
+    const selected=speaker===String(i);
+    const [full,half,extra]=row.querySelector('.speech-actions').children;
+    row.classList.toggle('speak',selected);
+    full.classList.toggle('on',selected&&total===60000);
+    half.classList.toggle('on',selected&&total===30000);
+    extra.disabled=!panelOn||!selected||last.seats[i].fouls>=2;
+  });
+}
+const foulClass=count=>count>=4?'f4':count===3?'f3':'';
+function updateFouls({seat,count}){
+  last.seats[seat].fouls=count;
+  const row=$('rows').querySelectorAll('.player')[seat];
+  if(!row)return;
+  const [add,value,remove]=row.querySelector('.foul-cell .fo').children;
+  value.className=foulClass(count);value.textContent=count;
+  add.disabled=!panelOn||count>=4;remove.disabled=!panelOn||count<1;
 }
 function drawRows(){
   const tb=$('rows');tb.textContent='';
-  const today=last.days[last.days.length-1],voting=today.stage||'vote',noms=today.noms.map(n=>n.i),hide=$('hideRoles').checked;
-  const speaker=activeSpeaker();
+  const today=last.days[last.days.length-1],voting=today.stage||'vote';
+  const noms=voting==='vote'?today.noms.map(n=>n.i):[],hide=$('hideRoles').checked;
   last.seats.forEach((s,i)=>{
     const out=s.st!=='alive',isOpen=open===i;
-    const speaking=speaker===String(i);
-    const tr=el('tr',{className:'player'+(out?' out':'')+(speaking?' speak':'')});
-    const nb=btn('👍',{a:'nom',i},{cls:'nomb',on:noms.includes(String(i)),label:'Выставить игрока '+(i+1),disabled:out||voting!=='vote'});
+    const tr=el('tr',{className:'player'+(out?' out':'')});
+    const nb=btn('👍',{a:'nom',i},{cls:'nomb',on:noms.includes(String(i)),label:'Выставить игрока '+(i+1),disabled:out||(voting!=='vote'&&!last.nextDayReady)});
     const nick=el('button',{type:'button',className:'nick',textContent:nickOf(i)});
     nick.setAttribute('aria-expanded',isOpen);
     if(out)nick.append(el('small',{textContent:STATE[s.st](s.kn)}));
     nick.onclick=()=>{open=isOpen?null:i;draw()};
-    const fo=el('span',{className:s.fouls>=4?'f4':s.fouls===3?'f3':'',textContent:s.fouls});
+    const fo=el('span',{className:foulClass(s.fouls),textContent:s.fouls});
     const role=el('select',{disabled:!panelOn,className:'rc-'+(s.role||'none')});role.setAttribute('aria-label','Роль игрока '+(i+1));
     ROLES.forEach(([v,t])=>role.add(new Option(t,v)));role.value=s.role||'';
     role.onchange=()=>send({a:'role',i,v:role.value});
     tr.append(el('td',{className:'gcol nom-cell'},nb),el('td',{className:'no',textContent:i+1}),
-      el('td',{className:'name-cell'},el('div',{className:'nick-line'},nick,speechButtons(i,s.fouls,speaking))),
+      el('td',{className:'name-cell'},el('div',{className:'nick-line'},nick,speechButtons(i))),
       el('td',{className:'gcol foul-cell'},el('div',{className:'fo'},btn('+',{a:'foul',i,d:1},{cls:'p',label:'Фол',disabled:s.fouls>=4}),fo,btn('−',{a:'foul',i,d:-1},{cls:'m',label:'Снять фол',disabled:s.fouls<1}))),
       el('td',{className:'gcol lh-cell'},lhCell(i)),
       el('td',{className:'rcell gcol'},hide?'':role),
       el('td',{className:'scol score-bonus'},scoreInput(i,'b',s.b||0,'dl-b','Допы')),
       el('td',{className:'scol score-pen'},scoreInput(i,'p',s.p||0,'dl-p','Минус')),
-      el('td',{className:'scol score-tech'},scoreInput(i,'t',s.t||0,'dl-p','Тех. минус')));
+      techCell(i,s));
     tb.append(tr);
     if(isOpen){
       const acts=el('div',{className:'acts'},
         btn('Убит',{a:'shot',i},{on:s.st==='killed'}),
         btn('Заголосован',{a:'status',i,v:s.st==='voted'?'alive':'voted'},{on:s.st==='voted'}),
-        btn('Удалён',{a:'status',i,v:s.st==='removed'?'alive':'removed'},{on:s.st==='removed'}));
+        btn('Удалён',{a:'status',i,v:s.st==='removed'?'alive':'removed'},{on:s.st==='removed',disabled:s.techFoulCount===2}));
       tb.append(el('tr',{className:'more'},el('td',{colSpan:9},acts)));
     }
-    if(lhOpen===i)tb.append(el('tr',{className:'more'},el('td',{colSpan:9},lhPicker(i))));
+    if(lhEditor?.i===i)tb.append(el('tr',{className:'more'},el('td',{colSpan:9},lhPicker(i))));
   });
+  drawSpeechRows();
 }
 function savedPicksOf(i){
   if(last.pu===String(i))return last.lh.filter(Boolean);
   return last.lhExtra?.pu===String(i)?last.lhExtra.seats:[];
 }
-const picksOf=i=>i===lhOpen&&lhDraft?lhDraft:savedPicksOf(i);
+const playerNumbers=picks=>picks.map(v=>+v+1).join(' ');
+const picksOf=i=>lhEditor?.i===i?lhEditor.picks:savedPicksOf(i);
 function lhCell(i){
   const full=last.lh.some(Boolean)&&last.lhExtra&&!savedPicksOf(i).length;
-  const picks=picksOf(i),b=el('button',{type:'button',className:'lhb'+(picks.length?' set':'')+(lhOpen===i?' open':''),disabled:!panelOn||!!full,
-    textContent:picks.length?picks.map(v=>+v+1).join(' '):'л.х.'});
+  const picks=picksOf(i),editing=lhEditor?.i===i;
+  const b=el('button',{type:'button',className:'lhb'+(picks.length?' set':'')+(editing?' open':''),disabled:!panelOn||!!full,
+    textContent:picks.length?playerNumbers(picks):'л.х.'});
   if(full)b.title='Уже записаны два лучших хода';
   b.setAttribute('aria-label','Лучший ход игрока '+(i+1));
-  b.setAttribute('aria-expanded',lhOpen===i);
-  b.onclick=()=>{lhOpen=lhOpen===i?null:i;lhDraft=null;lhDraft=lhOpen===null?null:[...picksOf(i)];draw()};
+  b.setAttribute('aria-expanded',editing);
+  b.onclick=()=>{
+    const saved=savedPicksOf(i);
+    lhEditor=editing?null:{i,picks:saved,text:playerNumbers(saved)};
+    draw();
+  };
   return b;
 }
 // Нажатие добавляет номер, повторное нажатие убирает его.
 function lhPicker(i){
-  const picks=picksOf(i),setPicks=v=>{lhDraft=v;send({a:'lhset',i,v});draw()};
-  const head=el('div',{className:'lhhead'},el('span',{textContent:'Лучший ход игрока '+(i+1)}),
-    (()=>{const c=el('button',{type:'button',textContent:'Очистить',disabled:!panelOn||!picks.length});c.onclick=()=>setPicks([]);return c})(),
-    (()=>{const d=el('button',{type:'button',textContent:'Готово'});d.onclick=()=>{lhOpen=null;lhDraft=null;draw()};return d})());
-  const typed=el('input',{type:'text',inputMode:'numeric',className:'lhtype',placeholder:'Наберите номера: 357 или 3 5 10, затем Enter',value:picks.map(v=>+v+1).join(' ')});
+  const picks=picksOf(i);
+  const typed=el('input',{type:'text',inputMode:'text',enterKeyHint:'done',className:'lhtype',
+    placeholder:'357 или 3 5 10, затем Enter',value:lhEditor.text,disabled:!panelOn});
   typed.setAttribute('aria-label','Лучший ход игрока '+(i+1)+' с клавиатуры');
+  const close=()=>{lhEditor=null;typed.blur();draw()};
+  const setPicks=(v,finish=false)=>{
+    if(!send({a:'lhset',i,v}))return;
+    if(finish)close();
+    else{lhEditor.picks=v;lhEditor.text=playerNumbers(v);typed.blur();draw()}
+  };
+  const clear=el('button',{type:'button',textContent:'Очистить',disabled:!panelOn||!picks.length});
+  clear.onclick=()=>setPicks([]);
+  const submit=el('button',{type:'submit',textContent:'Записать',disabled:!panelOn});
+  const head=el('div',{className:'lhhead'},el('span',{textContent:'Лучший ход игрока '+(i+1)}),clear,submit);
+  const form=el('form',{},head,typed);
+  form.onsubmit=e=>{
+    e.preventDefault();
+    const next=parsePlayerNumbers(typed.value).filter(v=>+v<last.seats.length).slice(0,3);
+    if(typed.value.trim()&&!next.length){
+      typed.setCustomValidity('Введите номера игроков от 1 до 10.');
+      typed.reportValidity();
+      return;
+    }
+    setPicks(next,true);
+  };
+  typed.oninput=()=>{lhEditor.text=typed.value;typed.setCustomValidity('')};
   typed.onkeydown=e=>{
-    if(e.key==='Escape'){lhOpen=null;lhDraft=null;typed.blur();return}
-    if(e.key!=='Enter')return;e.preventDefault();
-    const next=parseBest(typed.value).filter(v=>+v<last.seats.length);
-    lhOpen=null;lhDraft=null;send({a:'lhset',i,v:next});typed.blur();
+    if(e.isComposing)return;
+    if(e.key==='Escape'){e.preventDefault();close()}
+    if(e.key==='Enter'){e.preventDefault();form.requestSubmit()}
   };
   if(matchMedia('(pointer:fine)').matches)setTimeout(()=>typed.focus(),0); // с клавиатурой сразу можно печатать
   const grid=el('div',{className:'lhpick'});
@@ -336,59 +498,118 @@ function lhPicker(i){
     const k=picks.indexOf(String(j)),b=el('button',{type:'button',className:k>=0?'on':'',disabled:!panelOn||(k<0&&picks.length>=3)});
     b.append(String(j+1));if(k>=0)b.append(el('b',{textContent:k+1+'-й'}));
     b.setAttribute('aria-label','Номер '+(j+1)+' в лучшем ходе');
-    b.onclick=()=>{const next=k>=0?picks.filter(v=>v!==String(j)):[...picks,String(j)];if(next.length===3&&k<0){lhOpen=null;lhDraft=null}setPicks(next)};
+    b.onclick=()=>{const next=k>=0?picks.filter(v=>v!==String(j)):[...picks,String(j)];setPicks(next,next.length===3&&k<0)};
     grid.append(b);
   });
-  return el('div',{},head,typed,grid);
+  form.append(grid);
+  return form;
 }
-// номера лучшего хода из строки: «10» — десятый, остальные цифры по одной, повторы убираются, не больше трёх
-function parseBest(text){
+// «10» — десятый, остальные цифры читаются по одной. Разделители и повторы пропускаются.
+function parsePlayerNumbers(text){
   const out=[];
   for(let k=0;k<text.length;k++){
     const c=text[k];if(c<'1'||c>'9')continue;
     if(c==='1'&&text[k+1]==='0'){out.push('9');k++;continue}
     out.push(String(+c-1));
   }
-  return [...new Set(out)].slice(0,3);
+  return [...new Set(out)];
 }
 const who=list=>list.map(i=>(+i+1)+' · '+nickOf(+i)).join(', ');
 const nums=list=>list.map(i=>+i+1).join(', ');
-// строка кандидата: корзина (только в основном голосовании), номер, ник, число голосов и кнопки 0–10
-function candidate(n,canDelete){
+function voterButtons(n){
+  const grid=el('div',{className:'voters'});
+  for(const voter of last.eligibleVoters||[]){
+    const selected=n.voters?.includes(voter)||false;
+    const b=btn(String(+voter+1),{a:'voteVoter',i:+n.i,voter},
+      {on:selected,label:`Голос игрока ${who([voter])} за игрока ${who([n.i])}`});
+    b.dataset.voter=voter;
+    b.setAttribute('aria-pressed',String(selected));
+    grid.append(b);
+  }
+  return grid;
+}
+function candidate(n,canDelete,auto,named){
   const v=n.v===''?'':+n.v;
-  const grid=el('div',{className:'v11'});
-  for(let k=0;k<=10;k++)grid.append(btn(String(k),{a:'vote',i:+n.i,v:k},{on:v===k,label:'Голосов за '+(+n.i+1)+': '+k}));
   const head=el('div',{className:'chead'});
   if(canDelete)head.append(btn('🗑',{a:'nom',i:+n.i},{cls:'del',label:'Снять с голосования игрока '+(+n.i+1)}));
-  head.append(el('b',{textContent:+n.i+1}),el('span',{className:'nm',textContent:nickOf(+n.i)}),el('span',{className:'cnt',textContent:v===''?'–':v}));
+  head.append(el('b',{textContent:+n.i+1}),el('span',{className:'nm',textContent:nickOf(+n.i)}));
+  if(auto)head.append(el('span',{className:'muted',textContent:'Авто'}));
+  head.append(el('span',{className:'cnt',textContent:v===''?'–':v}));
+  if(auto){
+    const row=el('div',{className:'cand'},head);
+    if(named&&n.voters?.length)row.append(el('p',{className:'muted voters-note',textContent:'Голосовали: '+nums(n.voters)}));
+    else if(named&&v>0&&!n.voters)row.append(el('p',{className:'muted voters-note',textContent:'Номера появятся после поимённого ввода остальных голосов.'}));
+    return row;
+  }
+  if(named){
+    const row=el('div',{className:'cand'},head,voterButtons(n),
+      btn('0 голосов',{a:'voteVoter',i:+n.i,voter:''},{on:v===0,label:'Ноль голосов за '+(+n.i+1)}));
+    if(v>0&&!n.voters)row.append(el('p',{className:'muted voters-note',textContent:'Введено числом. Выбор игроков заменит это число.'}));
+    return row;
+  }
+  const grid=el('div',{className:'v11'});
+  for(let k=0;k<=10;k++)grid.append(btn(String(k),{a:'vote',i:+n.i,v:k},{on:v===k,label:'Голосов за '+(+n.i+1)+': '+k}));
   return el('div',{className:'cand'},head,grid);
+}
+function savedBallot(title,list){
+  const rows=list.map(n=>el('li',{textContent:who([n.i])+' — '+n.v+(n.voters?.length?' (№ '+nums(n.voters)+')':'')}));
+  return el('details',{className:'saved-ballot'},el('summary',{textContent:title}),el('ul',{},...rows));
+}
+function editVote(round,stage){
+  if(round!==stage){send({a:'voteReset',round});return}
+  const field=$('vote').querySelector('.voters button:not(:disabled),.v11 button:not(:disabled)');
+  (field||$('rows').querySelector('.nomb:not(:disabled)'))?.focus();
 }
 function drawVote(){
   const box=$('vote');box.textContent='';
-  const k=last.days.length,day=last.days[k-1],st=day.stage||'vote';
+  const k=last.days.length,day=last.days[k-1],st=day.stage||'vote',named=$('namedVotes').checked;
   $('dayTitle').textContent='Голосование · день '+k;
+  const chooseRound=!!day.revote.length;
+  const rounds=el('div',{className:'vote-rounds',hidden:true,id:'voteRounds'});
+  const edit=btn('Изменить',()=>{
+    if(!chooseRound){editVote('vote',st);return}
+    rounds.hidden=!rounds.hidden;
+    edit.setAttribute('aria-expanded',String(!rounds.hidden));
+    if(!rounds.hidden)rounds.firstElementChild.focus();
+  },{cls:'edit-vote'});
+  if(chooseRound){
+    edit.setAttribute('aria-expanded','false');
+    edit.setAttribute('aria-controls',rounds.id);
+    const selectRound=round=>()=>{
+      rounds.hidden=true;
+      edit.setAttribute('aria-expanded','false');
+      editVote(round,st);
+    };
+    rounds.append(btn('Основное голосование',selectRound('vote')),
+      btn('Переголосование',selectRound('revote')));
+  }
   if(st==='vote'||st==='revote'){
     const list=st==='vote'?day.noms:day.revote;
     if(st==='revote')box.append(el('div',{className:'stage',textContent:'Поровну голосов — переголосование между '+nums(list.map(n=>n.i))}));
     if(!list.length)box.append(el('div',{className:'muted',textContent:'Никто не выставлен. Нажмите 👍 у игрока.'}));
-    list.forEach(n=>box.append(candidate(n,st==='vote')));
+    list.forEach((n,i)=>box.append(candidate(n,st==='vote',i===list.length-1,named)));
     const total=list.reduce((a,n)=>a+(+n.v||0),0);
-    box.append(el('div',{className:'vsum'},el('span',{textContent:'Голосов: '+total}),
-      list.length?btn('Итог голосования',{a:'voteEnd'},{cls:'go'}):btn('Следующий день',{a:'day'})));
+    const votes=last.voters===undefined?'Голосов: '+total:`Голосов: ${total} / ${last.voters}`;
+    const actions=el('div',{className:'vote-actions'},edit);
+    if(list.length)actions.append(btn('Сохранить голосование',{a:'voteEnd'},{cls:'go',disabled:list.at(-1).v===''}));
+    box.append(el('div',{className:'vsum'},el('span',{textContent:votes}),actions));
   }else if(st==='lift'){
     box.append(el('div',{className:'stage',textContent:'После переголосования снова поровну'}),
       el('div',{className:'liftq',textContent:'Поднять всех: '+who(day.tied)+'?'}),
       el('div',{className:'lift'},btn('Подняли',{a:'lift',v:'up'},{cls:'up'}),btn('Оставили',{a:'lift',v:'stay'},{cls:'stay'})));
-    box.append(el('div',{className:'vsum'},el('span'),btn('Изменить',{a:'voteReset'})));
+    box.append(el('div',{className:'vsum'},edit));
   }else{
     box.append(el('div',{className:'outres',textContent:day.out.length?(day.out.length>1?'Стол покидают: ':'Стол покидает: ')+who(day.out):'Оставили — никто не покинул стол'}));
-    box.append(el('div',{className:'vsum'},btn('Изменить',{a:'voteReset'}),btn('Следующий день',{a:'day'},{cls:'go'})));
+    box.append(el('div',{className:'vsum'},edit));
   }
+  if(chooseRound)box.append(rounds);
+  if(named&&st!=='vote'&&day.noms.length)box.append(savedBallot('Голоса основного раунда',day.noms));
+  if(named&&(st==='lift'||st==='done')&&day.revote.length)box.append(savedBallot('Голоса переголосования',day.revote));
   const past=last.days.slice(0,-1).map((d,j)=>'День '+(j+1)+': '+(!d.noms.length?'без выставлений':d.stage==='done'?(d.out.length?'ушли '+nums(d.out):'оставили'):'выставлены '+nums(d.noms.map(n=>n.i))));
   if(past.length)box.append(el('div',{className:'past',textContent:past.join(' · ')}));
 }
-// итог проверки как в пульте: игрок без роли считается мирным
-function checkResult(seat){if(!seat)return ['',''];if(seat.role==='don')return ['don','дон'];return seat.role==='mafia'?['black','чёрный']:['red','красный']}
+// Игрок без роли считается мирным.
+function checkResult(seat){if(!seat)return ['',''];return ['mafia','don'].includes(seat.role)?['black','чёрный']:['red','красный']}
 function donResult(seat){if(!seat)return ['',''];return seat.role==='sheriff'?['sheriff','шериф']:['','не шериф']}
 function nightAction(k,f,label,value,result){
   const sel=el('select',{disabled:!panelOn});sel.setAttribute('aria-label',label+', ночь '+(k+1));
@@ -401,18 +622,154 @@ function drawWinner(){
   const box=$('winner');box.textContent='';
   [['red','Мирные'],['black','Мафия'],['draw','Ничья']].forEach(([v,t])=>box.append(btn(t,{a:'winner',v:last.winner===v?'':v},{cls:v,on:last.winner===v,label:'Победа: '+t})));
 }
+const wideLayout=matchMedia('(min-width:1180px)');
+function openSidePanels(){
+  $('nightPanel').open=wideLayout.matches;
+  $('reportPanel').open=wideLayout.matches;
+}
+openSidePanels();
+wideLayout.addEventListener('change',openSidePanels);
+const nightExpanded=new Map();
 function drawNights(){
   const box=$('nights');box.textContent='';
-  (last.nights||[]).forEach((n,k)=>box.append(el('section',{className:'card'},el('b',{textContent:'Ночь '+(k+1)}),
-    nightAction(k,'shot','Отстрел',n.shot,['','']),
-    nightAction(k,'don','Дон',n.don,donResult(last.seats[n.don])),
-    nightAction(k,'check','Шериф',n.check,checkResult(last.seats[n.check])))));
+  const nights=last.nights||[];
+  nights.forEach((n,k)=>{
+    // После первого действия сервер добавляет пустую ночь. Оставляем доступной и начатую.
+    const card=el('details',{className:'card',open:nightExpanded.get(k)??(k>=nights.length-2)});
+    const title=el('summary',{textContent:'Ночь '+(k+1)});
+    title.onclick=()=>nightExpanded.set(k,!card.open);
+    card.append(title,
+      nightAction(k,'shot','Отстрел',n.shot,['','']),
+      nightAction(k,'don','Дон',n.don,donResult(last.seats[n.don])),
+      nightAction(k,'check','Шериф',n.check,checkResult(last.seats[n.check])));
+    box.append(card);
+  });
+}
+const reportFields=[['red','Красные'],['black','Чёрные'],['sheriff','Шериф']];
+const reportOwner=$('reportOwner'),reportAdd=$('reportAdd');
+let reportEdit=null,reportOptions=null,reportSignature=null;
+function enableReportAdd(){
+  reportOwner.disabled=!panelOn||reportOwner.options.length<=1;
+  reportAdd.disabled=reportOwner.disabled||reportOwner.value==='';
+}
+reportOwner.onchange=enableReportAdd;
+$('reportForm').onsubmit=e=>{
+  e.preventDefault();
+  if(reportAdd.disabled)return;
+  const i=reportOwner.value;
+  reportEdit={i,field:reportFields[0][0]};
+  send({a:'deathReport',op:'add',i:+i});
+  reportOwner.value='';
+  enableReportAdd();
+};
+const reportPicks=(report,field)=>field==='sheriff'?[report.sheriff].filter(Boolean):report[field];
+function reportCell(report,field,label){
+  const text=reportPicks(report,field).map(i=>+i+1).join(', ')||'—';
+  const expanded=reportEdit?.i===report.i&&reportEdit.field===field;
+  const button=el('button',{type:'button',className:'report-cell '+field,textContent:text,disabled:!panelOn});
+  button.dataset.reportControl='cell-'+report.i+'-'+field;
+  button.setAttribute('aria-expanded',expanded);
+  button.setAttribute('aria-label',label+', протокол игрока '+(+report.i+1)+': '+text);
+  button.onclick=e=>{
+    reportEdit=expanded?null:{i:report.i,field};
+    drawReports();
+    if(!expanded&&(e.detail===0||matchMedia('(pointer:fine)').matches)){
+      $('reportRows').querySelector('[data-report-control="input-'+report.i+'-'+field+'"]')?.focus();
+    }
+  };
+  return el('td',{},button);
+}
+function reportPicker(report,field){
+  const picks=reportPicks(report,field);
+  const heading=reportFields.find(([key])=>key===field)[1];
+  const example=field==='sheriff'?'Например: 5':'2910 или 2 9 10';
+  const input=el('input',{type:'text',inputMode:field==='sheriff'?'numeric':'text',placeholder:example,
+    value:reportEdit.draft??picks.map(i=>+i+1).join(', '),disabled:!panelOn,maxLength:60});
+  input.dataset.reportControl='input-'+report.i+'-'+field;
+  input.setAttribute('aria-label',heading+' с клавиатуры, протокол игрока '+(+report.i+1));
+  const submit=el('button',{type:'submit',textContent:'Применить',disabled:!panelOn});
+  const form=el('form',{className:'report-input-form'},input,submit);
+  input.oninput=()=>{reportEdit.draft=input.value};
+  const closeEditor=()=>{
+    reportEdit=null;drawReports();
+    $('reportRows').querySelector('[data-report-control="cell-'+report.i+'-'+field+'"]')?.focus();
+  };
+  form.onsubmit=e=>{
+    e.preventDefault();
+    if(!panelOn)return;
+    const numbers=parsePlayerNumbers(input.value).map(Number).filter(n=>n<last.seats.length);
+    const picks=field==='sheriff'?numbers.slice(0,1):numbers;
+    send({a:'deathReport',op:'set',i:+report.i,field,picks});
+    closeEditor();
+  };
+  const buttons=el('div',{className:'report-picks'});
+  last.seats.forEach((_,n)=>{
+    const chosen=picks.includes(String(n));
+    const button=btn(String(n+1),{a:'deathReport',op:'pick',i:+report.i,field,n},
+      {on:chosen,label:'Игрок '+(n+1)+' · '+nickOf(n)});
+    button.dataset.reportControl='pick-'+report.i+'-'+field+'-'+n;
+    button.setAttribute('aria-pressed',chosen);
+    buttons.append(button);
+  });
+  const done=el('button',{type:'button',textContent:'Готово'});
+  done.onclick=closeEditor;
+  return el('tr',{},el('td',{colSpan:4,className:'report-edit'},
+    el('div',{className:'report-edit-head'},el('strong',{textContent:heading}),done),form,buttons));
+}
+function drawReports(){
+  const reports=last.deathReports||[];
+  const existing=new Set(reports.map(report=>report.i));
+  const options=last.seats.flatMap((_,i)=>existing.has(String(i))?[]:[[String(i),'№ '+(i+1)+' · '+nickOf(i)]]);
+  const optionsKey=JSON.stringify(options);
+  if(optionsKey!==reportOptions){
+    const selected=reportOwner.value;
+    reportOwner.replaceChildren(new Option('Номер игрока',''),...options.map(([id,label])=>new Option(label,id)));
+    if(options.some(([id])=>id===selected))reportOwner.value=selected;
+    reportOptions=optionsKey;
+  }
+  enableReportAdd();
+  if(reportEdit&&!existing.has(reportEdit.i))reportEdit=null;
+  const signature=JSON.stringify([reports,panelOn,reportEdit?.i,reportEdit?.field]);
+  if(signature===reportSignature)return;
+  reportSignature=signature;
+  $('reportEmpty').hidden=!!reports.length;
+  $('reportTable').hidden=!reports.length;
+  const box=$('reportRows');
+  const active=document.activeElement;
+  const focus=box.contains(active)?active.dataset.reportControl:null;
+  const selection=active.tagName==='INPUT'?[active.selectionStart,active.selectionEnd]:null;
+  box.textContent='';
+  for(const report of reports){
+    const source=report.night?'Ночь '+report.night:report.manual?'Вручную':'Отстрел изменён';
+    const number=+report.i+1;
+    const remove=el('button',{type:'button',className:'report-delete',textContent:'Удалить',disabled:!panelOn});
+    remove.dataset.reportControl='delete-'+report.i;
+    remove.setAttribute('aria-label','Удалить протокол игрока № '+number);
+    remove.onclick=()=>{
+      if(confirm('Удалить протокол игрока № '+number+'?'))send({a:'deathReport',op:'delete',i:+report.i});
+    };
+    const owner=el('th',{scope:'row',className:'report-owner'},'№ '+number,el('small',{textContent:source}),remove);
+    box.append(el('tr',{},owner,...reportFields.map(([field,label])=>reportCell(report,field,label))));
+    if(reportEdit?.i===report.i)box.append(reportPicker(report,reportEdit.field));
+  }
+  if(focus){
+    const control=[...box.querySelectorAll('[data-report-control]')].find(node=>node.dataset.reportControl===focus);
+    control?.focus({preventScroll:true});
+    if(control?.tagName==='INPUT'&&selection)control.setSelectionRange(...selection);
+  }
+}
+function drawTimerUpdate(){drawTimer();drawSpeechRows()}
+function syncTimer(timer){
+  if(!pendingStart&&timer.endAt!==last?.timer.endAt)timerDisplay.clear();
+  timerClock.update(timer);
 }
 function draw(){
   if(!last)return;
   $('msg').hidden=true;$('app').hidden=false;
   $('title').textContent=(last.title||'Судья')+(last.game?' · игра '+last.game:'');
-  drawTimer();if(typing())rowsPending=true;else drawRows();drawVote();drawNights();drawWinner();
+  drawTimer();
+  if(typing()){rowsPending=true;drawSpeechRows()}else drawRows();
+  drawVote();drawNights();drawReports();drawWinner();
   // заметки не перерисовываются, пока судья их печатает
   if(document.activeElement!==$('notes')&&$('notes').value!==last.notes)$('notes').value=last.notes;
   $('notes').disabled=!panelOn;
@@ -425,20 +782,32 @@ function connect(){
     if(m.kind==='peers'){
       const was=panelOn;panelOn=m.panel>0;
       setConn(panelOn?'ok':'bad',panelOn?'На связи':'Пульт не подключён');
-      if(panelOn&&!was)ws.send(JSON.stringify({kind:'hello'}));
+      if(panelOn&&!was)ws.send(JSON.stringify({kind:'hello',timerUpdates:true}));
       draw();
     }else if(m.kind==='error'){
       setConn('bad',m.error);
+      if(pendingStart){pendingStart=null;timerDisplay.clear();drawTimerUpdate()}
+    }else if(m.kind==='nominationConfirm'&&last){
+      const {i,speaker,nominee}=m;
+      if(confirm(`Игрок ${who([speaker])} уже выставил игрока ${who([nominee])}. Выставить игрока ${who([i])}?`)){
+        send({a:'nom',i,confirmed:{speaker,nominee}});
+      }
+    }else if(['countdownAck','speechAck','restartAck'].includes(m.kind)&&pendingStart?.request===m.request){
+      pendingStart=null;drawTimerUpdate();
+    }else if(m.kind==='timer'&&last){
+      syncTimer(m.timer);last.timer=m.timer;
+      if(m.foul)updateFouls(m.foul);
+      drawTimerUpdate();
     }else if(m.kind==='state'){
       if(panelOn)setConn('ok','На связи');
       // пульт старой версии не присылает протокол
       m.days=(m.days&&m.days.length?m.days:[{noms:[]}]).map(d=>Object.assign({stage:'vote',revote:[],tied:[],out:[]},d));
       m.timer=m.timer||{running:false,remain:60000,total:60000,speaker:''};
       m.lh=m.lh||['','',''];m.winner=m.winner||'';m.pu=m.pu||'';m.notes=m.notes||'';
-      last=m;gotAt=Date.now();draw();
+      syncTimer(m.timer);last=m;draw();
     }
   };
-  ws.onclose=e=>{panelOn=false;setConn('bad',e.code===4403?'Пульт не подключён':'Нет связи, переподключаюсь…');draw();setTimeout(connect,2000)};
+  ws.onclose=e=>{panelOn=false;pendingStart=null;timerDisplay.clear();setConn('bad',e.code===4403?'Пульт не подключён':'Нет связи, переподключаюсь…');draw();setTimeout(connect,2000)};
 }
 if(/^[a-f0-9]{32}$/.test(room))connect();
 else{setConn('bad','Неверная ссылка');$('msg').textContent='Откройте полную ссылку из пульта.'}

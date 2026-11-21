@@ -25,12 +25,14 @@ const ASSETS = {
   '/assets/rules.js': 'rules.js',
   '/assets/client.js': 'client.js',
   '/assets/state.js': 'state.js',
+  '/assets/timer.js': 'timer.js',
   '/assets/screen.js': 'screen.js',
   '/assets/panel.js': 'panel.js',
 };
 const MAX_PER_ROOM = 8;
 const CLOSE_RELOAD = 4000;
 const FROM_SERVER = { app: 'mafiahud', from: 'server' };
+const TIMER_START_ACK = { countdown: 'countdownAck', speak: 'speechAck', restart: 'restartAck' };
 const encode = message => JSON.stringify({ ...FROM_SERVER, ...message });
 const send = (socket, message) => sendText(socket, encode(message));
 const roles = { host: new Set(), judge: new Set(), screen: new Set() };
@@ -51,7 +53,7 @@ function scheduleSpeechEnd(retry = 0) {
   speechEnd = setTimeout(() => {
     speechEnd = null;
     try {
-      if (game.expireSpeech()) publish();
+      if (game.expireSpeech()) publishTimer();
       else scheduleSpeechEnd();
     } catch (error) {
       console.error('Не удалось завершить речь:', error.message);
@@ -80,18 +82,33 @@ function sendView(socket, view, text) {
   sendText(socket, text);
 }
 
-function publish() {
+function publish(timerUpdate) {
   scheduleSpeechEnd();
-  if (roles.screen.size) {
-    const view = game.view();
-    const text = encode({ kind: 'view', view });
-    for (const socket of roles.screen) if (socket.introduced) sendView(socket, view, text);
+  const timerText = timerUpdate && encode(timerUpdate);
+  let view, viewText;
+  for (const socket of roles.screen) {
+    if (!socket.introduced) continue;
+    if (timerText && socket.timerUpdates) {
+      sendText(socket, timerText);
+      continue;
+    }
+    if (!view) {
+      view = game.view();
+      viewText = encode({ kind: 'view', view });
+    }
+    sendView(socket, view, viewText);
   }
-  if (roles.judge.size) {
-    const text = JSON.stringify(game.judgeState());
-    for (const socket of roles.judge) sendText(socket, text);
+  let judgeText;
+  for (const socket of roles.judge) {
+    if (timerText && socket.timerUpdates) sendText(socket, timerText);
+    else sendText(socket, judgeText ??= JSON.stringify(game.judgeState()));
   }
   for (const socket of roles.host) send(socket, { kind: 'game', S: game.state(), ack: socket.seq });
+}
+
+function publishTimer(seat) {
+  const foul = seat === undefined ? undefined : { seat, count: game.state().seats[seat].fouls };
+  publish({ kind: 'timer', timer: game.timer(), foul });
 }
 
 function updateRooms() {
@@ -135,7 +152,8 @@ function hostChange(socket, message) {
   if (before !== game.rooms() &&
       (before.room !== game.rooms().room || before.hud !== game.rooms().hud)) updateRooms();
   if (result.deleted?.length) photosChanged(result.deleted);
-  publish();
+  if (message.kind === 'patch' && message.ops.every(([path]) => path[0] === 'timer')) publishTimer();
+  else publish();
 }
 
 function fromHost(socket, message) {
@@ -169,12 +187,27 @@ function fromHost(socket, message) {
 function fromPlayer(socket, message) {
   if (!game.owns(socket.role, socket.room)) return;
   if (socket.role === 'judge') {
-    if (message.kind === 'hello') sendText(socket, JSON.stringify(game.judgeState()));
-    else if (message.kind === 'cmd' && game.command(message)) publish();
+    if (message.kind === 'hello') {
+      socket.timerUpdates = message.timerUpdates === true;
+      sendText(socket, JSON.stringify(game.judgeState()));
+    }
+    else if (message.kind === 'cmd') {
+      const warning = message.a === 'nom' && game.nominationConfirmation(message);
+      if (warning) return send(socket, { kind: 'nominationConfirm', i: message.i, ...warning });
+      const day = game.state().days.length;
+      if (game.command(message)) {
+        if (message.a === 'timer' && day === game.state().days.length) publishTimer(message.op === 'extra' ? message.i : undefined);
+        else publish();
+      }
+      if (message.a === 'timer' && Number.isSafeInteger(message.request) && Object.hasOwn(TIMER_START_ACK, message.op)) {
+        send(socket, { kind: TIMER_START_ACK[message.op], request: message.request });
+      }
+    }
     return;
   }
   if (message.kind === 'hello' && !socket.introduced) {
     socket.introduced = true;
+    socket.timerUpdates = message.timerUpdates === true;
     const view = game.view();
     sendView(socket, view, encode({ kind: 'view', view }));
   }

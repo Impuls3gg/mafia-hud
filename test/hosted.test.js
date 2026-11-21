@@ -147,7 +147,7 @@ test('протокол дня: выставления, голоса, тайме�
   cmd({ a: 'nom', i: 3 }); cmd({ a: 'nom', i: 7 }); cmd({ a: 'nom', i: 3 }); cmd({ a: 'nom', i: 3 });
   assert.ok(await until(() => state().days[0].noms.map(n => n.i).join() === '7,3'), 'повторное выставление снимает игрока, порядок сохраняется');
   cmd({ a: 'votes', i: 7, d: 1 }); cmd({ a: 'votes', i: 7, d: 1 }); cmd({ a: 'votes', i: 3, d: -1 });
-  assert.ok(await until(() => state().days[0].noms[0].v === 2 && state().days[0].noms[1].v === 0));
+  assert.ok(await until(() => state().days[0].noms[0].v === 2 && state().days[0].noms[1].v === 8));
   assert.ok(await until(() => view(screen).noms.length === 2 && view(screen).noms[0].v === 2), 'выставленные не дошли до худа');
 
   cmd({ a: 'timer', op: 'speak', v: '4' });
@@ -204,10 +204,14 @@ test('страница судьи: баллы и лучший ход вводя�
   await page.run("document.activeElement.blur()");
   await page.run("document.querySelectorAll('.lhb')[6].click()");
   assert.ok(await until(() => page.run("!!document.querySelector('.lhtype')")));
-  await key('.lhtype', '3 5 10');
+  await key('.lhtype', '3510');
   assert.ok(await until(() => stored().lhPu === '6' && stored().lh.join() === '2,4,9'), 'лучший ход с клавиатуры не записан');
   await page.run("document.querySelectorAll('.lhb')[7].click()");
-  await key('.lhtype', '2 4 6');
+  await page.run(`(()=>{
+    const input=document.querySelector('.lhtype');
+    input.value='2 4 6';input.dispatchEvent(new Event('input',{bubbles:true}));
+    input.form.requestSubmit();
+  })()`);
   assert.ok(await until(() => stored().lhExtra?.pu === '7'));
   assert.deepEqual(await page.run("[...document.querySelectorAll('.lhb.set')].map(b=>b.textContent)"), ['3 5 10', '2 4 6']);
   await page.run(`(()=>{
@@ -236,21 +240,28 @@ test('на телефоне кнопки речи стоят справа от �
       && controls.right<=${doc}.documentElement.clientWidth;
   })()`), true);
   assert.deepEqual(await page.run(`[...${doc}.querySelectorAll('#nights .act span')].map(el=>el.textContent)`), ['Отстрел', 'Дон', 'Шериф']);
-  assert.deepEqual(await page.run(`[...${row}.querySelectorAll('.fo button')].map(b=>b.textContent)`), ['+', '−']);
+  assert.deepEqual(await page.run(`[...${row}.querySelectorAll('.foul-cell .fo button')].map(b=>b.textContent)`), ['+', '−']);
 
   await page.run(`${row}.querySelector('.nick').click()`);
   assert.deepEqual(await page.run(`[...${doc}.querySelectorAll('.acts button')].map(b=>b.textContent)`), ['Убит', 'Заголосован', 'Удалён']);
-  await page.run(`${row}.querySelectorAll('.speech-actions button')[1].click()`);
-  assert.ok(await until(() => stored().timer.running && stored().timer.total === 30000 && stored().timer.speaker === '0'));
-  await page.run(`${row}.querySelectorAll('.speech-actions button')[2].click()`);
-  assert.ok(await until(() => stored().seats[0].fouls === 2 && stored().timer.endAt - Date.now() > 30000));
-  assert.ok(await until(() => page.run(`${row}.querySelectorAll('.speech-actions button')[2].disabled`)));
-
   await page.run(`(()=>{
     const f=document.createElement('iframe');f.id='overlay';f.src=${JSON.stringify('/hud#' + rooms.hud)};document.body.append(f);
   })()`);
   const overlay = "document.getElementById('overlay')?.contentDocument";
-  assert.ok(await until(() => page.run(`!!${overlay}?.querySelector('.spk.on') && !!${overlay}?.querySelector('.tile.speak')`)));
+  assert.ok(await until(() => page.run(`!!${overlay}?.querySelector('.tile .nick span')?.firstChild`)));
+  await page.run(`window.tableRow=${row};window.hudNick=${overlay}.querySelector('.tile .nick span').firstChild`);
+
+  await page.run(`${row}.querySelectorAll('.speech-actions button')[1].click()`);
+  assert.ok(await until(() => stored().timer.running && stored().timer.total === 30000 && stored().timer.speaker === '0'));
+  await page.run(`${doc}.querySelectorAll('.player')[1].querySelector('.speech-actions button').click()`);
+  assert.ok(await until(() => page.run(`${overlay}.querySelector('.spk .sw').textContent.startsWith('2 ·')
+    && ${doc}.querySelectorAll('.player')[1].classList.contains('speak')`)));
+  await page.run(`${row}.querySelectorAll('.speech-actions button')[1].click()`);
+  await page.run(`${row}.querySelectorAll('.speech-actions button')[2].click()`);
+  assert.ok(await until(() => stored().seats[0].fouls === 2 && stored().timer.endAt - Date.now() > 30000));
+  assert.ok(await until(() => page.run(`${row}.querySelectorAll('.speech-actions button')[2].disabled`)));
+  assert.ok(await until(() => page.run(`${overlay}.querySelector('.tile.speak .fc')?.textContent==='2'`)));
+  assert.equal(await page.run(`window.tableRow===${row} && window.hudNick===${overlay}.querySelector('.tile .nick span').firstChild`), true);
 
   send({ kind: 'patch', seq: 1, ops: [[['timer', 'endAt'], Date.now() + 1000]] });
   assert.ok(await until(() => stored().timer.left === 0 && stored().timer.speaker === '' && !stored().timer.running));
@@ -264,16 +275,358 @@ test('на телефоне кнопки речи стоят справа от �
   await page.run(`${row}.querySelector('.speech-actions button').click()`);
   assert.ok(await until(() => stored().timer.running && stored().timer.speaker === '0' && stored().timer.total === 60000));
   assert.ok(await until(() => page.run(`!${doc}.querySelector('.timer.finished') && !!${overlay}.querySelector('.spk.on')`)));
-  assert.equal(await page.run(`${doc}.getElementById('tStop').previousElementSibling.id`), 'tPlay');
+  assert.equal(await page.run(`${doc}.getElementById('tReset').previousElementSibling.id`), 'tPlay');
+  assert.equal(await page.run(`${doc}.getElementById('tPlay').getAttribute('aria-label')`), 'Остановить и обнулить таймер');
   await page.run(`${doc}.getElementById('tPlay').click()`);
-  assert.ok(await until(() => !stored().timer.running && stored().timer.speaker === '0'));
-  await page.run(`${doc}.getElementById('tStop').click()`);
   assert.ok(await until(() => !stored().timer.running && stored().timer.speaker === '' && stored().timer.left === 0));
   assert.ok(await until(() => page.run(`(()=>{
     const clock=${doc}.getElementById('clock');
     return clock.textContent==='0:00' && clock.getClientRects().length>0
       && !${overlay}.querySelector('.spk.on, .tile.speak');
   })()`)));
+  assert.equal(await page.run(`(()=>{
+    const judge=${doc};
+    judge.getElementById('tReset').click();
+    return judge.getElementById('clock').textContent;
+  })()`), '1:00');
+  assert.ok(await until(() => stored().timer.running && stored().timer.speaker === '0' && stored().timer.total === 60000));
+  assert.ok(await until(() => page.run(`!!${overlay}.querySelector('.spk.on, .tile.speak')`)));
+});
+
+test('запоздавшее обновление не возвращает секунды на таймере судьи и HUD', { skip }, async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms } = await openGame(t, server);
+  const screen = await joinScreen(t, server, rooms);
+  const page = await openPage(t, `${server.http}/#${rooms.room}`);
+  assert.ok(await until(() => page.run("!!document.querySelector('.player')"), 20000));
+  await page.run(`(() => {
+    const frame=document.createElement('iframe');
+    frame.id='timer-hud'; frame.src=${JSON.stringify('/hud#' + rooms.hud)}; document.body.append(frame);
+  })()`);
+  const overlay = "document.getElementById('timer-hud')";
+  const hudClock = `${overlay}.contentDocument?.querySelector('.spk .clk')`;
+  assert.ok(await until(() => page.run(`!!${hudClock}`), 20000));
+  await page.run("document.querySelector('.speech-actions button').click()");
+  assert.ok(await until(() => view(screen).timer.running));
+  assert.ok(await until(() => page.run("last.timer.running")));
+  const previousJudge = await page.run('JSON.stringify(last)');
+  const previousView = view(screen);
+  assert.equal(JSON.parse(previousJudge).timer.endAt, previousView.timer.endAt);
+
+  assert.ok(await until(() => page.run(`(() => {
+    const clocks=[clock.textContent,${hudClock}.textContent];
+    return clocks.every(text => /^0:5[0-8]$/.test(text));
+  })()`)));
+  const samples = await page.run(`(() => {
+    const times=()=>[clock.textContent,${hudClock}.textContent]
+      .map(text=>text.split(':').reduce((total,value)=>total*60+Number(value),0));
+    const before=times();
+    ws.onmessage({data:${JSON.stringify(previousJudge)}});
+    ${overlay}.contentWindow.applyView(${JSON.stringify(previousView)});
+    return {before,after:times()};
+  })()`);
+  assert.ok(samples.after.every((seconds, index) => seconds <= samples.before[index]), JSON.stringify(samples));
+});
+
+test('при задержке судья начинает с 1:00, а HUD показывает актуальное время', { skip }, async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms } = await openGame(t, server);
+  const screen = await joinScreen(t, server, rooms);
+  const page = await openPage(t, `${server.http}/#${rooms.room}`);
+  assert.ok(await until(() => page.run("!!document.querySelector('.player')"), 20000));
+  await page.run(`(() => {
+    const frame=document.createElement('iframe');
+    frame.id='timer-frame'; frame.src=${JSON.stringify('/hud#' + rooms.hud)}; document.body.append(frame);
+  })()`);
+  assert.ok(await until(() => page.run("!!document.getElementById('timer-frame').contentDocument?.querySelector('.spk')")));
+  const first = await page.run(`(async () => {
+    const hud=document.getElementById('timer-frame');
+    hud.contentWindow.applyView(${JSON.stringify(view(screen))});
+    const transmit=ws.send.bind(ws);
+    ws.send=data=>{
+      if(JSON.parse(data).op==='speak')setTimeout(()=>transmit(data),1300);
+      else transmit(data);
+    };
+    const box=hud.contentDocument.querySelector('.spk');
+    const firstHud=new Promise(resolve=>{
+      const watch=new MutationObserver(()=>{
+        if(box.classList.contains('on')){
+          watch.disconnect();
+          resolve(box.querySelector('.clk').textContent);
+        }
+      });
+      watch.observe(box,{attributes:true,attributeFilter:['class']});
+    });
+    const firstJudge=new Promise(resolve=>requestAnimationFrame(()=>{
+      const end=performance.now()+1150;
+      while(performance.now()<end){}
+      tick();
+      resolve(clock.textContent);
+    }));
+    document.querySelector('.speech-actions button').click();
+    return Promise.all([firstJudge,firstHud]);
+  })()`);
+  assert.equal(first[0], '1:00');
+  assert.match(first[1], /^0:5[89]$/);
+  assert.ok(await until(() => page.run(`(() => {
+    const hud=document.getElementById('timer-frame').contentDocument;
+    return clock.textContent!=='1:00'&&hud.querySelector('.spk .clk').textContent!=='1:00';
+  })()`)));
+});
+
+test('таймеры на 60, 30 и 20 секунд показывают полное время сразу, даже если команда задержалась', { skip }, async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms } = await openGame(t, server);
+  const screen = await joinScreen(t, server, rooms);
+  const page = await openPage(t, `${server.http}/#${rooms.room}`);
+  assert.ok(await until(() => page.run("!!document.querySelector('.player')"), 20000));
+  await page.run(`(() => {
+    const transmit=ws.send.bind(ws), receive=ws.onmessage;
+    ws.send=data=>{
+      const message=JSON.parse(data);
+      if(message.op!=='countdown'&&message.op!=='speak')return transmit(data);
+      window.timerStart=message.startedAt;
+      setTimeout(()=>transmit(data),2200);
+    };
+    ws.onmessage=event=>{
+      const kind=JSON.parse(event.data).kind;
+      if(kind!=='countdownAck'&&kind!=='speechAck')return receive(event);
+      const before=clock.textContent;
+      receive(event);
+      window.timerConfirmation={before,after:clock.textContent,pending:!!pendingStart};
+    };
+  })()`);
+  const seconds = text => text.split(':').reduce((total, value) => total * 60 + +value, 0);
+  for (const [selector, duration, speaker] of [
+    ['.speech-actions button', 60000, '0'],
+    ['.speech-actions button:nth-child(2)', 30000, '0'],
+    ['[data-countdown="20000"]', 20000, ''],
+  ]) {
+    const started = await page.run(`(() => {
+      window.timerConfirmation=null;
+      document.querySelector(${JSON.stringify(selector)}).click();
+      return {clock:clock.textContent,startedAt:window.timerStart};
+    })()`);
+    assert.equal(seconds(started.clock), duration / 1000);
+    assert.ok(Number.isSafeInteger(started.startedAt));
+    assert.ok(await until(() => view(screen).timer.running && view(screen).timer.total === duration));
+    const timer = view(screen).timer;
+    assert.equal(timer.speaker, speaker);
+    assert.ok(timer.sentAt - started.startedAt >= 2000);
+    assert.equal(timer.endAt, started.startedAt + duration);
+    const confirmation = await until(() => page.run('window.timerConfirmation'));
+    assert.equal(confirmation.pending, false);
+    assert.ok(seconds(confirmation.before) <= duration / 1000 - 2, JSON.stringify(confirmation));
+    const change = seconds(confirmation.before) - seconds(confirmation.after);
+    assert.ok(change >= 0 && change <= 1, JSON.stringify(confirmation));
+  }
+});
+
+test('судья запускает короткий отсчёт, начисляет и снимает технические фолы с телефона', { skip }, async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms, send } = await openGame(t, server);
+  const screen = await joinScreen(t, server, rooms);
+  const page = await openPage(t, `${server.http}/#${rooms.room}`);
+  assert.ok(await until(() => page.run("!!document.querySelector('.player')"), 20000));
+  await page.run("const f=document.createElement('iframe');f.id='phone';f.style.width='360px';f.src=location.href;document.body.append(f)");
+  const doc = "document.getElementById('phone').contentDocument";
+  const controls = `${doc}?.querySelector('.score-tech .tech-controls')`;
+  assert.ok(await until(() => page.run(`!!${controls} && !${controls}.querySelector('button').disabled`), 20000));
+  await page.run(`(() => {
+    const frame=document.createElement('iframe');
+    frame.id='countdown-hud'; frame.src=${JSON.stringify('/hud#' + rooms.hud)}; document.body.append(frame);
+  })()`);
+  const overlay = "document.getElementById('countdown-hud').contentDocument";
+  assert.ok(await until(() => page.run(`!!${overlay}?.querySelector('.spk')`)));
+  await page.run(`${doc}.querySelector('.speech-actions button').click()`);
+  assert.ok(await until(() => page.run(`!!${overlay}.querySelector('.spk.on')`)));
+  assert.equal(await page.run(`${doc}.getElementById('notes').nextElementSibling.textContent`), 'Результат игры');
+  assert.equal(await page.run(`${doc}.querySelector('main').lastElementChild.id`), 'winner');
+  assert.deepEqual(await page.run(`[...${doc}.querySelectorAll('#tReset ~ button')].map(b=>b.textContent)`), ['10 с', '20 с']);
+  for (const ms of [10000, 20000]) {
+    await page.run(`${doc}.querySelector('[data-countdown="${ms}"]').click()`);
+    assert.ok(await until(() => view(screen)?.timer.total === ms && view(screen)?.timer.running));
+    assert.equal(view(screen).timer.speaker, '');
+    assert.ok(await until(() => page.run(`${doc}.getElementById('who').textContent==='Общий отсчёт'`)));
+    assert.ok(await until(() => page.run(`!${overlay}.querySelector('.spk.on, .tile.speak')`)));
+  }
+  await page.run(`${doc}.getElementById('tPlay').click()`);
+  assert.ok(await until(() => !view(screen).timer.running && view(screen).timer.remain === 0));
+  assert.equal(await page.run(`(()=>{
+    const judge=${doc};
+    judge.getElementById('tReset').click();
+    return judge.getElementById('clock').textContent;
+  })()`), '0:20');
+  assert.ok(await until(() => view(screen).timer.running && view(screen).timer.total === 20000 && view(screen).timer.speaker === ''));
+  assert.equal(await page.run(`!${overlay}.querySelector('.spk.on, .tile.speak')`), true);
+  send({ kind: 'patch', seq: 1, ops: [[['timer', 'endAt'], Date.now() + 200]] });
+  assert.ok(await until(() => !view(screen).timer.running && view(screen).timer.remain === 0));
+  assert.ok(await until(() => page.run(`${doc}.getElementById('clock').textContent==='0:00'`)));
+
+  await page.run(`${doc}.querySelector('[data-mode="scores"]').click()`);
+  assert.equal(await page.run(`[...${controls}.querySelectorAll('button')].every(b=>b.offsetWidth>0&&b.getBoundingClientRect().right<=${doc}.documentElement.clientWidth)`), true);
+  assert.deepEqual(await page.run(`[...${controls}.querySelectorAll('button')].map(b=>[b.textContent,b.disabled])`),
+    [['+', false], ['−', true], ['+', false], ['−', true]]);
+  await page.run(`${controls}.querySelectorAll('.p')[0].click()`);
+  assert.ok(await until(() => page.run(`${controls}.querySelector('output')?.textContent==='−0,30'`)));
+  assert.equal(view(screen).seats[0].status, 'alive');
+  await page.run(`${controls}.querySelectorAll('.p')[1].click()`);
+  assert.ok(await until(() => page.run(`${controls}.querySelector('output')?.textContent==='−1,50' && [...${controls}.querySelectorAll('.p')].every(b=>b.disabled)`)));
+  assert.ok(await until(() => view(screen).seats[0].status === 'removed'));
+  await page.run(`${controls}.querySelectorAll('.m')[0].click()`);
+  assert.ok(await until(() => page.run(`${controls}.querySelector('output')?.textContent==='−0,60'`)));
+  assert.ok(await until(() => view(screen).seats[0].status === 'alive'));
+  await page.run(`${controls}.querySelectorAll('.m')[1].click()`);
+  assert.ok(await until(() => page.run(`${controls}.querySelector('input')?.value==='' && [...${controls}.querySelectorAll('.m')].every(b=>b.disabled)`)));
+});
+
+test('экран судьи раскладывает протоколы по ширине и позволяет записать мнение живого игрока', { skip }, async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms, host } = await openGame(t, server);
+  const page = await openPage(t, `${server.http}/#${rooms.room}`);
+  assert.ok(await until(() => page.run("!!document.querySelector('.player')"), 20000));
+  await page.run(`(()=>{
+    for(const [id,width] of [['wide',1280],['narrow',360]]){
+      const f=document.createElement('iframe');f.id=id;f.width=width;f.height=760;f.src=location.href;document.body.append(f);
+    }
+  })()`);
+  const wide = "(document.getElementById('wide')?.contentDocument)";
+  const narrow = "(document.getElementById('narrow')?.contentDocument)";
+  for (const doc of [wide, narrow]) {
+    assert.ok(await until(() => page.run(`!!${doc}?.querySelector('.player') && !${doc}.getElementById('reportOwner').disabled`), 20000));
+  }
+  assert.equal(await page.run(`(()=>{
+    const doc=${wide},night=doc.getElementById('nightPanel'),reports=doc.getElementById('reportPanel');
+    const table=doc.querySelector('.pr').getBoundingClientRect();
+    return night.open && reports.open && night.getBoundingClientRect().right<=table.left
+      && reports.getBoundingClientRect().left>=table.right;
+  })()`), true);
+  assert.equal(await page.run(`${narrow}.getElementById('nightPanel').open || ${narrow}.getElementById('reportPanel').open`), false);
+  assert.deepEqual(await page.run(`[...${wide}.querySelectorAll('#reportTable th')].map(th=>th.textContent)`),
+    ['Игрок', 'Красные', 'Чёрные', 'Шериф']);
+  const sheriffCheck = `${wide}.querySelector('#nights select[aria-label="Шериф, ночь 1"]')`;
+  await page.run(`const check=${sheriffCheck};check.value='1';check.dispatchEvent(new Event('change'))`);
+  assert.ok(await until(() => page.run(`${sheriffCheck}.nextElementSibling.textContent==='красный'`)));
+  await page.run(`const role=${wide}.querySelectorAll('.player .rcell select')[1];
+    role.value='don';role.dispatchEvent(new Event('change'))`);
+  assert.ok(await until(() => page.run(`${sheriffCheck}.nextElementSibling.textContent==='чёрный'
+    && ${sheriffCheck}.nextElementSibling.classList.contains('black')`)));
+  await page.run(`${narrow}.querySelector('#reportPanel summary').click();
+    const owner=${narrow}.getElementById('reportOwner');
+    owner.value='3';owner.dispatchEvent(new Event('change')); ${narrow}.getElementById('reportAdd').click()`);
+  const stored = () => lastOf(host, 'game').S;
+  assert.ok(await until(() => stored().deathReports.some(report => report.i === '3' && report.manual)));
+  assert.equal(stored().seats[3].status, 'alive');
+  const click = (doc, id) => page.run(`${doc}.querySelector('[data-report-control="${id}"]').click()`);
+  assert.ok(await until(() => page.run(`!!${narrow}.querySelector('[data-report-control="input-3-red"]')
+    && !!${wide}.querySelector('#reportRows .report-cell')`)));
+  assert.deepEqual(await page.run(`[...${wide}.querySelectorAll('#reportRows tr:first-child .report-cell')]
+    .map(cell=>cell.dataset.reportControl)`), ['cell-3-red', 'cell-3-black', 'cell-3-sheriff']);
+  await click(narrow, 'cell-3-black');
+  assert.ok(await until(() => page.run(`!!${narrow}.querySelector('[data-report-control="pick-3-black-1"]')`)));
+  await click(narrow, 'pick-3-black-1');
+  await click(narrow, 'pick-3-black-8');
+  await click(narrow, 'cell-3-sheriff');
+  await click(narrow, 'pick-3-sheriff-4');
+  assert.ok(await until(() => page.run(`
+    ${wide}.querySelector('[data-report-control="cell-3-black"]')?.textContent==='2, 9'
+      && ${wide}.querySelector('[data-report-control="cell-3-sheriff"]')?.textContent==='5'`)));
+
+  await click(narrow, 'cell-3-red');
+  const enter = (field, numbers) => page.run(`(()=>{
+    const input=${narrow}.querySelector('[data-report-control="input-3-${field}"]');
+    input.value=${JSON.stringify(numbers)};
+    input.dispatchEvent(new Event('input',{bubbles:true}));input.form.requestSubmit();
+  })()`);
+  await enter('red', '4710 / 3.6; 4');
+  assert.ok(await until(() => page.run(
+    `${wide}.querySelector('[data-report-control="cell-3-red"]')?.textContent==='3, 4, 6, 7, 10'`)));
+  assert.equal(await page.run(`!!${narrow}.querySelector('[data-report-control="input-3-red"]')`), false);
+  assert.equal(stored().deathReports[0].red.join(), '2,3,5,6,9');
+  await click(narrow, 'cell-3-sheriff');
+  await enter('sheriff', '10/8');
+  assert.ok(await until(() => stored().deathReports[0].sheriff === '9'));
+
+  await page.run(`const shot=${wide}.querySelector('#nights select[aria-label="Отстрел, ночь 1"]');
+    shot.value='6';shot.dispatchEvent(new Event('change'))`);
+  assert.ok(await until(() => page.run(`!!${wide}.querySelector('[data-report-control="cell-6-red"]')`)));
+  assert.equal(stored().deathReports.length, 1, 'автоматическая строка появилась даже без записанных номеров');
+
+  await page.run(`${wide}.defaultView.confirm=text=>{window.reportConfirmation=text;return false}`);
+  await click(wide, 'delete-6');
+  assert.match(await page.run('window.reportConfirmation'), /Удалить протокол игрока № 7/);
+  assert.equal(await page.run(`!!${wide}.querySelector('[data-report-control="cell-6-red"]')`), true);
+  await page.run(`${wide}.defaultView.confirm=()=>true`);
+  await click(wide, 'delete-6');
+  assert.ok(await until(() => page.run(`!${wide}.querySelector('[data-report-control="cell-6-red"]')`)));
+  assert.equal(stored().nights[0].shot, '6');
+  await click(wide, 'delete-3');
+  assert.ok(await until(() => !stored().deathReports.some(report => report.i === '3')));
+});
+
+test('судья подтверждает повторное выставление в речи, последний кандидат получает оставшиеся голоса', { skip }, async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms, host } = await openGame(t, server);
+  const page = await openPage(t, `${server.http}/#${rooms.room}`);
+  const stored = () => lastOf(host, 'game').S;
+  assert.ok(await until(() => page.run("!!document.querySelector('.player')"), 20000));
+  const click = (i, selector) => page.run(`document.querySelectorAll('.player')[${i}].querySelector(${JSON.stringify(selector)}).click()`);
+  await page.run("window.prompts=[];window.acceptNomination=false;window.confirm=text=>{prompts.push(text);return acceptNomination}");
+  await click(0, '.speech-actions button');
+  await click(1, '.nomb');
+  assert.ok(await until(() => stored().days[0].noms.length === 1));
+  assert.ok(await until(() => page.run("document.querySelector('.cand .cnt')?.textContent==='10'")));
+  await click(2, '.nomb');
+  assert.ok(await until(() => page.run('prompts.length===1')));
+  assert.match(await page.run('prompts[0]'), /Игрок 1 .*уже выставил игрока 2 .*Выставить игрока 3/);
+  assert.equal(stored().days[0].noms.length, 1);
+  await page.run('window.acceptNomination=true');
+  await click(2, '.nomb');
+  assert.ok(await until(() => stored().days[0].noms.map(n => n.i).join() === '1,2'));
+  await click(3, '.speech-actions button');
+  await click(4, '.nomb');
+  assert.ok(await until(() => stored().days[0].noms.map(n => n.i).join() === '1,2,4'));
+  assert.equal(await page.run('prompts.length'), 2);
+  assert.ok(await until(() => page.run("document.querySelector('#vote .go')?.disabled")));
+  assert.equal(await page.run("document.querySelectorAll('.cand')[2].querySelector('.v11')===null"), true);
+  await page.run("document.querySelectorAll('.cand')[0].querySelectorAll('.v11 button')[3].click()");
+  await page.run("document.querySelectorAll('.cand')[1].querySelectorAll('.v11 button')[2].click()");
+  assert.ok(await until(() => page.run("document.querySelectorAll('.cand')[2]?.querySelector('.cnt').textContent==='5'")));
+  await page.run("document.querySelector('#vote .go').click()");
+  assert.ok(await until(() => stored().days[0].out?.[0] === '4'));
+  assert.equal(stored().days[0].noms[2].v, 5);
+});
+
+test('поимённое голосование переносит голос между кандидатами и сохраняет список игроков', { skip }, async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms, host } = await openGame(t, server);
+  const page = await openPage(t, `${server.http}/#${rooms.room}`);
+  const day = () => lastOf(host, 'game').S.days.at(-1);
+  assert.ok(await until(() => page.run("!!document.querySelector('.player')"), 20000));
+  for (const i of [1, 3, 5]) await page.run(`document.querySelectorAll('.player')[${i}].querySelector('.nomb').click()`);
+  const row = i => `document.querySelectorAll('.cand')[${i}]`;
+  assert.ok(await until(() => page.run(`!!${row(2)}`)));
+  await page.run("document.getElementById('namedVotes').click()");
+  assert.ok(await until(() => page.run(`!!${row(0)}?.querySelector('[data-voter="0"]')`)));
+  const vote = (i, voter) => page.run(`${row(i)}.querySelector('[data-voter="${voter}"]').click()`);
+  await vote(0, 0);
+  await vote(0, 2);
+  await vote(1, 0);
+  assert.ok(await until(() => day().noms[0].voters?.join() === '2' && day().noms[1].voters?.join() === '0'));
+  assert.ok(await until(() => page.run(`${row(2)}.querySelector('.cnt').textContent==='8'
+    && ${row(2)}.querySelector('.voters-note').textContent==='Голосовали: 2, 4, 5, 6, 7, 8, 9, 10'`)));
+  await page.run(`${row(1)}.querySelector('[aria-label="Ноль голосов за 4"]').click()`);
+  assert.ok(await until(() => day().noms[1].v === 0 && day().noms[1].voters?.length === 0));
+  await page.run("document.getElementById('namedVotes').click()");
+  assert.equal(await page.run(`${row(0)}.querySelector('.v11 .on').textContent`), '1');
+  assert.equal(await page.run("document.querySelector('#vote .go').textContent"), 'Сохранить голосование');
+  await page.run("document.getElementById('namedVotes').click()");
+  assert.equal(await page.run(`${row(0)}.querySelector('[data-voter="2"]').getAttribute('aria-pressed')`), 'true');
+  await page.run("document.querySelector('#vote .go').click()");
+  assert.ok(await until(() => day().stage === 'done'));
+  assert.deepEqual(day().noms.map(n => [n.v, n.voters]), [[1, ['2']], [0, []], [9, ['0', '1', '3', '4', '5', '6', '7', '8', '9']]]);
+  assert.ok(await until(() => page.run("!!document.querySelector('.saved-ballot')")));
+  assert.match(await page.run("document.querySelector('.saved-ballot li').textContent"), /№ 3/);
 });
 
 test('голосование: итог, переголосование при равенстве и вопрос «подняли/оставили»', async t => {
@@ -288,8 +641,8 @@ test('голосование: итог, переголосование при р
 
   // день 1: явный лидер покидает стол
   cmd({ a: 'nom', i: 1 }); cmd({ a: 'nom', i: 4 });
-  cmd({ a: 'vote', i: 1, v: 6 }); cmd({ a: 'vote', i: 4, v: 3 }); cmd({ a: 'vote', i: 4, v: 11 }); // 11 голосов не бывает
-  assert.ok(await until(() => day().noms.map(n => n.v).join() === '6,3'));
+  cmd({ a: 'vote', i: 1, v: 6 }); cmd({ a: 'vote', i: 1, v: 11 }); // 11 голосов не бывает
+  assert.ok(await until(() => day().noms.map(n => n.v).join() === '6,4'));
   cmd({ a: 'voteEnd' });
   assert.ok(await until(() => day().stage === 'done' && day().out.join() === '1'), 'лидер не покинул стол');
   assert.equal(state().seats[1].st, 'voted');
@@ -302,12 +655,12 @@ test('голосование: итог, переголосование при р
   // день 2: поровну → переголосование → снова поровну → подняли
   cmd({ a: 'day' });
   cmd({ a: 'nom', i: 2 }); cmd({ a: 'nom', i: 5 }); cmd({ a: 'nom', i: 8 });
-  cmd({ a: 'vote', i: 2, v: 4 }); cmd({ a: 'vote', i: 5, v: 4 }); cmd({ a: 'vote', i: 8, v: 1 });
+  cmd({ a: 'vote', i: 2, v: 4 }); cmd({ a: 'vote', i: 5, v: 4 });
   cmd({ a: 'voteEnd' });
   assert.ok(await until(() => day().stage === 'revote' && day().revote.map(n => n.i).join() === '2,5'), 'нет переголосования между равными');
   assert.ok(await until(() => lifted() === '2,5'), 'на худе приподняты не участники переголосования');
   cmd({ a: 'vote', i: 8, v: 9 }); // не участник переголосования
-  cmd({ a: 'vote', i: 2, v: 5 }); cmd({ a: 'vote', i: 5, v: 5 });
+  cmd({ a: 'vote', i: 2, v: 5 });
   cmd({ a: 'voteEnd' });
   assert.ok(await until(() => day().stage === 'lift' && day().tied.join() === '2,5'), 'нет вопроса «подняли/оставили»');
   cmd({ a: 'lift', v: 'up' });
@@ -316,13 +669,124 @@ test('голосование: итог, переголосование при р
   // день 3: снова поровну дважды → оставили
   cmd({ a: 'day' });
   cmd({ a: 'nom', i: 0 }); cmd({ a: 'nom', i: 9 });
-  cmd({ a: 'vote', i: 0, v: 3 }); cmd({ a: 'vote', i: 9, v: 3 }); cmd({ a: 'voteEnd' });
+  cmd({ a: 'vote', i: 0, v: 4 }); cmd({ a: 'voteEnd' });
   assert.ok(await until(() => day().stage === 'revote'));
-  cmd({ a: 'vote', i: 0, v: 2 }); cmd({ a: 'vote', i: 9, v: 2 }); cmd({ a: 'voteEnd' });
+  cmd({ a: 'vote', i: 0, v: 4 }); cmd({ a: 'voteEnd' });
   assert.ok(await until(() => day().stage === 'lift'));
   cmd({ a: 'lift', v: 'stay' });
   assert.ok(await until(() => day().stage === 'done' && day().out.length === 0), '«Оставили» должен оставить всех');
   assert.equal(state().seats[0].st, 'alive');
+});
+
+test('судья может исправить каждый раунд голосования после сохранения', { skip }, async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms, host } = await openGame(t, server);
+  const page = await openPage(t, `${server.http}/#${rooms.room}`);
+  const stored = () => lastOf(host, 'game').S;
+  const day = () => stored().days.at(-1);
+  const click = selector => page.run(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  const vote = n => click(`.cand .v11 button[aria-label="Голосов за 1: ${n}"]`);
+  const save = () => click('#vote .go');
+  const edit = () => click('#vote .edit-vote');
+  const openRound = async index => {
+    await edit();
+    assert.ok(await page.run("!document.getElementById('voteRounds').hidden"));
+    await click(`#voteRounds button:nth-child(${index})`);
+  };
+  const stage = name => until(() => day().stage === name &&
+    page.run(`last.days.at(-1).stage===${JSON.stringify(name)}`));
+  assert.ok(await until(() => page.run("!!document.querySelector('#vote .edit-vote')"), 20000));
+  await edit();
+  assert.equal(await page.run("document.activeElement.classList.contains('nomb')"), true);
+  await click('.player:nth-child(1) .nomb');
+  await click('.player:nth-child(2) .nomb');
+  assert.ok(await until(() => page.run("document.querySelectorAll('#vote .cand').length===2")));
+  await edit();
+  assert.equal(await page.run("document.activeElement.closest('.v11')!==null"), true);
+  await vote(5);
+  assert.ok(await until(() => page.run("!document.querySelector('#vote .go').disabled")));
+  await save();
+  assert.ok(await stage('revote'));
+
+  await openRound(2);
+  assert.equal(await page.run("document.activeElement.closest('.v11')!==null"), true);
+  await vote(5);
+  assert.ok(await until(() => page.run("!document.querySelector('#vote .go').disabled")));
+  await save();
+  assert.ok(await stage('lift'));
+  await openRound(2);
+  assert.ok(await stage('revote'));
+  assert.equal(day().revote[0].v, 5);
+  await vote(6);
+  assert.ok(await until(() => day().revote[0].v === 6));
+  await save();
+  assert.ok(await stage('done'));
+  assert.equal(day().out.join(), '0');
+  assert.deepEqual(await page.run("[...document.querySelectorAll('#vote button')].map(b=>b.textContent).filter(text=>text.includes('день'))"), []);
+  assert.equal(await page.run("document.getElementById('newDay')"), null);
+
+  await openRound(2);
+  assert.ok(await stage('revote'));
+  assert.equal(stored().seats[0].status, 'alive');
+  assert.deepEqual(day().out, []);
+  assert.equal(day().revote[0].v, 6);
+  await vote(4);
+  assert.ok(await until(() => day().revote[0].v === 4));
+  await save();
+  assert.ok(await stage('done'));
+  assert.equal(day().out.join(), '1');
+  await openRound(1);
+  assert.ok(await stage('vote'));
+  assert.equal(stored().seats[1].status, 'alive');
+  assert.equal(day().noms[0].v, 5);
+  assert.deepEqual(day().revote, []);
+});
+
+test('после ночи новый день открывается автоматически, последняя речь выбывшего относится к старому дню', { skip }, async t => {
+  const server = await startServer(t, SECRET);
+  const { rooms, host } = await openGame(t, server);
+  const screen = await connect(t, server.url(rooms.hud, 'screen'));
+  screen.ws.send(JSON.stringify({kind:'hello',mode:'overlay',timerUpdates:true}));
+  assert.ok(await until(() => view(screen)?.day === 1));
+  const page = await openPage(t, `${server.http}/#${rooms.room}`);
+  const state = () => lastOf(host, 'game').S;
+  const ready = () => until(() => page.run("!!document.querySelector('.player')"));
+  const player = (i, selector) => page.run(`document.querySelectorAll('.player')[${i}].querySelector(${JSON.stringify(selector)}).click()`);
+  const save = () => page.run("document.querySelector('#vote .go').click()");
+  const night = (k, seat) => page.run(`(() => {
+    const check=document.querySelector('[aria-label="Шериф, ночь ${k}"]');
+    check.value=${JSON.stringify(seat)};check.dispatchEvent(new Event('change'));
+  })()`);
+  const saved = () => until(() => page.run("last.days.at(-1).stage==='done'"));
+  assert.ok(await ready());
+  await player(0, '.nomb');
+  assert.ok(await until(() => page.run("!!document.querySelector('#vote .go')")));
+  await save();
+  assert.ok(await saved());
+  assert.equal(await page.run("document.querySelectorAll('.nomb')[2].disabled"), true);
+
+  await player(0, '.speech-actions button');
+  assert.ok(await until(() => state().timer.running && state().timer.speaker === '0'));
+  assert.equal(state().days.length, 1);
+  await night(1, '4');
+  assert.ok(await until(() => page.run("last.nextDayReady && !document.querySelectorAll('.nomb')[2].disabled")));
+  assert.ok(await page.run("last.days.length===1 && !!document.querySelector('#vote .edit-vote')"));
+  await player(2, '.nomb');
+  assert.ok(await until(() => page.run("last.days.length===2 && last.days[1].noms[0]?.i==='2'")));
+  assert.deepEqual(state().days[0].out, ['0']);
+
+  await save();
+  assert.ok(await saved());
+  await player(3, '.speech-actions button');
+  assert.ok(await until(() => page.run("last.days.length===3 && last.timer.speaker==='3'")));
+  assert.ok(await until(() => view(screen).day === 3 && view(screen).timer.speaker === '3'));
+  assert.deepEqual(state().days[1].out, ['2']);
+
+  await night(2, '5');
+  assert.ok(await until(() => page.run("last.nextDayReady")));
+  await player(4, '.speech-actions button');
+  assert.ok(await until(() => page.run("last.days.length===4 && last.timer.speaker==='4'")));
+  assert.equal(state().days[2].noms.length, 0);
 });
 
 test('неверные сообщения не ломают сервер и игру', async t => {
@@ -527,6 +991,7 @@ test('экспорт на MafiaUniverse: закладка заполняет п�
   cmd({ a: 'lhset', i: 2, v: ['4', '6', '8'] });
   cmd({ a: 'nom', i: 4 }); cmd({ a: 'nom', i: 5 }); cmd({ a: 'vote', i: 4, v: 7 }); cmd({ a: 'vote', i: 5, v: 2 }); cmd({ a: 'voteEnd' });
   cmd({ a: 'score', i: 3, f: 'b', v: 0.5 }); cmd({ a: 'score', i: 7, f: 'p', v: 1 }); cmd({ a: 'score', i: 7, f: 't', v: 0.25 });
+  cmd({ a: 'techFoul', i: 3, v: 6, count: 0 }); cmd({ a: 'techFoul', i: 3, v: 6, count: 1 });
   cmd({ a: 'notes', v: 'Игрок 6 сорвал речь' });
   assert.ok(await until(() => page.run("S.notes==='Игрок 6 сорвал речь'&&S.seats[7].tech===0.25&&(S.days[0].out||[]).join()==='4'")), 'игра не дошла до пульта');
   cmd({ a: 'winner', v: 'draw' }); cmd({ a: 'winner', v: 'nobody' });
@@ -545,7 +1010,7 @@ test('экспорт на MafiaUniverse: закладка заполняет п�
   assert.equal(r.killed, '2', 'первый убиенный');
   assert.equal(r.best, '5,7,9', 'лучший ход номерами через запятую');
   assert.equal(r.bestShown, '');
-  assert.equal(r.scores, '0,50/0,00/0,00 0,00/1,00/0,25', 'допы, минусы и тех. минусы в формате сайта');
+  assert.equal(r.scores, '0,50/0,00/1,80 0,00/1,00/0,25', 'допы, минусы и тех. минусы в формате сайта');
   assert.equal(r.win, '3', 'ничья, которую поставил судья');
   assert.match(r.note, /^Заметка с сайта\n\nИгрок 6 сорвал речь\n\nГолосования:\nДень 1: 5 \(7\), 6 \(2\) → стол покидает 5$/, 'заметка дописана к заметке с сайта');
 });

@@ -44,12 +44,13 @@ expect 'установка из клона' "$?" 0
 expect 'страница открывается' "$(page | grep -c 'Мафия · судья')" 1
 password="$(secret)"
 expect 'пароль создан' "${#password}" 32
+mkdir -p "$server/judge"
 mv "$server/deploy/.env" "$server/judge/.env"
 
 sed -i 's/<title>Мафия · судья<\/title>/<title>Новая версия<\/title>/' "$origin/src/client/judge.html"
 git -C "$origin" -c user.name=test -c user.email=test@example.com commit -q -am second
 
-bash "$server/judge/update.sh" > "$tmp/update.log" 2>&1
+bash "$server/deploy/update.sh" > "$tmp/update.log" 2>&1
 expect 'обновление' "$?" 0
 expect 'открывается новая версия' "$(page | grep -c 'Новая версия')" 1
 expect 'пароль сохранён' "$(secret)" "$password"
@@ -59,7 +60,7 @@ expect 'рабочая копия чистая' "$(git -C "$server" status --por
 sed -i 's/<title>Новая версия<\/title>/<title>Третья<\/title>/' "$server/src/client/judge.html"
 sed -i 's/<title>Новая версия<\/title>/<title>Другая<\/title>/' "$origin/src/client/judge.html"
 git -C "$origin" -c user.name=test -c user.email=test@example.com commit -q -am third
-bash "$server/judge/update.sh" > "$tmp/conflict.log" 2>&1
+bash "$server/deploy/update.sh" > "$tmp/conflict.log" 2>&1
 if [ "$?" -ne 0 ]; then echo 'ok   правки на сервере останавливают обновление'; else echo 'FAIL правки на сервере не остановили обновление'; failed=1; fi
 expect 'старая версия продолжает работать' "$(page | grep -c 'Новая версия')" 1
 

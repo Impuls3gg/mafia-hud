@@ -240,13 +240,13 @@ function startPanel(){
   /* ---- рассадка из MafiaUniverse: закладка присылает все игры турнира, пульт сажает игроков выбранного стола ---- */
   function resetGame(){
     Net.send({kind:'muCancel'});
-    S.seats.forEach(s=>{s.role='';s.status='alive';s.fouls=0;s.bonus=0;s.pen=0;s.tech=0});
+    S.seats.forEach(s=>Object.assign(s,{role:'',status:'alive',fouls:0,bonus:0,pen:0,tech:0,techFouls:[]}));
     S.nights=[{shot:'',check:'',don:''}];S.scene='game';Object.assign(S,protocolDefaults());
   }
   const muList=()=>S.mu?S.mu.games.filter(g=>g.table===S.mu.table):[];
   const muTables=()=>S.mu?[...new Set(S.mu.games.map(g=>g.table))].sort((a,b)=>a-b):[];
-  const inProgress=()=>S.seats.some(s=>s.role||s.status!=='alive'||+s.fouls||+s.bonus||+s.pen||+s.tech)||S.nights.some(n=>n.shot||n.check||n.don)
-    ||days().some(d=>d.noms.length)||(Array.isArray(S.lh)&&S.lh.some(Boolean))||!!(S.notes||'').trim();
+  const inProgress=()=>S.seats.some(s=>s.role||s.status!=='alive'||+s.fouls||+s.bonus||+s.pen||techPenalty(s))||S.nights.some(n=>n.shot||n.check||n.don)
+    ||days().some(d=>d.noms.length)||(Array.isArray(S.lh)&&S.lh.some(Boolean))||S.deathReports?.some(report=>!report.dismissedNight)||!!(S.notes||'').trim();
   // ник на MafiaUniverse хранится отдельно (r.mu), поэтому ник на худе можно менять, а импорт всё равно узнаёт игрока
   const muNick=p=>(p&&(p.mu||p.nick)||'').trim().toLowerCase();
   const sameSeats=g=>g.seats.every((nick,i)=>muNick(person(S.seats[i].pid))===nick.toLowerCase());
@@ -298,7 +298,7 @@ function startPanel(){
     muNote='Протокол отправлен на MafiaUniverse. Вернитесь на вкладку сайта, проверьте и сохраните.';renderFn();
     return {game:S.mu&&S.mu.cur||'',pu:firstKilled(),lh:(Array.isArray(S.lh)?S.lh:[]).filter(Boolean),
       winner:({red:1,black:2,draw:3})[S.winner]||(S.scene==='red'?1:S.scene==='black'?2:0),
-      seats:S.seats.map((s,i)=>{const p=person(s.pid);return {n:i+1,nick:p?(p.mu||p.nick):'',role:s.role||'',fouls:+s.fouls||0,b:scoreOf(s.bonus),p:scoreOf(s.pen),t:scoreOf(s.tech)}}),
+      seats:S.seats.map((s,i)=>{const p=person(s.pid);return {n:i+1,nick:p?(p.mu||p.nick):'',role:s.role||'',fouls:+s.fouls||0,b:scoreOf(s.bonus),p:scoreOf(s.pen),t:techPenalty(s)}}),
       note:[notes,votes.length?'Голосования:\n'+votes.join('\n'):''].filter(Boolean).join('\n\n')};
   };
   const showSt={game:'',results:''},showRequests={};
@@ -421,6 +421,7 @@ function startPanel(){
       tr.querySelector('.rc').className='rc rc-'+(s.role==='sheriff'?'gold':s.role==='don'?'don':s.role?ROLES[s.role].team:'none');
       const sel=tr.querySelector('[data-f=status]'),kl=tr.querySelector('.killed'),fo=+s.fouls||0,fn=tr.querySelector('.fn');
       if(st==='killed'){sel.style.display='none';kl.textContent=`Убит (ночь ${shotNight(i)+1})`}
+      else if(s.techFouls?.length===2){sel.style.display='none';kl.textContent='Удалён (2 техфола)'}
       else if(fo>=4){sel.style.display='none';kl.textContent='Удалён (4 фола)'}
       else{sel.style.display='';kl.textContent='';setVal(sel,s.status==='voted'||s.status==='removed'?s.status:'alive')}
       fn.textContent=fo;fn.className='fn'+(fo>=4?' f4':fo===3?' f3':'');
@@ -459,7 +460,7 @@ function startPanel(){
     });
     if(pendingFocus){const inp=rl.querySelector(`.rn[data-id="${CSS.escape(pendingFocus)}"]`);pendingFocus=null;if(inp){inp.focus();inp.select();inp.scrollIntoView({block:'nearest'})}}
 
-    const po=S.seats.map((s,i)=>`<option value="${i}">№${i+1} ${esc(seatNick(i))}</option>`).join('');
+    const po=S.seats.map((_,i)=>`<option value="${i}">№${i+1} ${esc(seatNick(i))}</option>`).join('');
     $('#nights').innerHTML=S.nights.map((n,k)=>{
       let rs='',rd='';
       if((n.check||'')!==''){const tm=team(+n.check),dn=S.seats[+n.check].role==='don';rs=dn?'<span class="rs don">дон</span>':`<span class="rs ${tm}">${tm==='black'?'чёрный':'красный'}</span>`}

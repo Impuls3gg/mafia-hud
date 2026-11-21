@@ -13,7 +13,7 @@ const photo = host => host.texts().map(JSON.parse).filter(m => m.kind === 'photo
 
 test('отдаёт только страницы и публичные ресурсы HUD', async t => {
   const server = await startServer(t, SECRET);
-  for (const page of ['/', '/panel', '/hud', '/win-civilians', '/win-mafia', '/assets/style.css', '/assets/rules.js']) {
+  for (const page of ['/', '/panel', '/hud', '/win-civilians', '/win-mafia', '/assets/style.css', '/assets/rules.js', '/assets/timer.js']) {
     assert.equal((await fetch(server.http + page)).status, 200, page);
   }
   for (const page of ['/server.js', '/store.js', '/judge.html', '/mafia-hud.html', '/hud/x', '/.env', '/hud.sqlite']) {

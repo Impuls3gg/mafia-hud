@@ -63,8 +63,12 @@ function createGame(dir, rulesFile) {
     },
     state: () => rules.S,
     view: () => rules.buildView(),
+    timer: () => rules.timerView(),
     judgeState: () => rules.stateMsg(),
-    seatedPhotos: () => [...rules.seatedPhotos()],
+    nominationConfirmation(message) {
+      const warning = rules.nominationWarning(message);
+      return warning && !rules.confirmedNomination(message, warning) ? warning : null;
+    },
     photo: id => rules.photos[id] || null,
     photoIds: () => Object.keys(rules.photos),
     setPhoto(id, data) {

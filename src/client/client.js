@@ -148,9 +148,9 @@ let muInbox=null,muTake=null,muExport=null; // рассадка из закла�
 addEventListener('message',e=>{
   if(!MU_ORIGINS.includes(e.origin)||!e.data)return;
   // закладка «Заполнить протокол» спрашивает игру; пока пульт ждёт пароль, ответа нет, и закладка повторяет запрос
-  if(e.data.app==='mafiahud-mu-get'){if(muExport)try{e.source.postMessage({app:'mafiahud-mu-export',data:muExport()},e.origin)}catch(err){}return}
+  if(e.data.app==='mafiahud-mu-get'){if(muExport)try{e.source.postMessage({app:'mafiahud-mu-export',data:muExport()},e.origin)}catch{}return}
   if(e.data.app!=='mafiahud-mu')return;
-  try{e.source.postMessage({app:'mafiahud-mu-ack'},e.origin)}catch(err){}
+  try{e.source.postMessage({app:'mafiahud-mu-ack'},e.origin)}catch{}
   const d=muClean(e.data.data);if(!d)return;
   if(muTake)muTake(d);else muInbox=d;
 });

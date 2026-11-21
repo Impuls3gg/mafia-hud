@@ -1,11 +1,12 @@
 if(MODE!=='panel'){
-  let V = null, viewAt = Date.now();
+  let V = null;
+  const timerClock=createTimerClock();
   const pc = Object.create(null);
   const photo = id => pc[id] || null;
   const vTeam=i=>ROLES[(V.seats[i]||{}).role||'civ'].team;
   // цвет игрока как у номера на его плашке: шериф и дон — цвет роли, остальные — цвет команды
   const vColor=i=>{const r=(V.seats[i]||{}).role;return r==='sheriff'?'sher':r==='don'?'don':vTeam(i)};
-  let draw=()=>{};
+  let draw=()=>{},drawTimerUpdate=()=>{};
 
   function prune(){
     if(!V||!V.seats)return;
@@ -14,10 +15,18 @@ if(MODE!=='panel'){
   }
   function applyView(v){
     if (!v?.seats) return;
-    V=v;viewAt=Date.now();prune();draw();
+    V=v;
+    if(v.timer)timerClock.update(v.timer);
+    prune();draw();
   }
   Net.on(m=>{
     if(m.kind==='view')applyView(m.view);
+    else if(m.kind==='timer'&&V){
+      V.timer=m.timer;
+      if(m.foul)V.seats[m.foul.seat].fouls=m.foul.count;
+      timerClock.update(m.timer);
+      drawTimerUpdate(m.foul);
+    }
     else if (m.kind === 'photo') {
       if (m.data) pc[m.pid] = m.data;
       else delete pc[m.pid];
@@ -25,7 +34,7 @@ if(MODE!=='panel'){
     }
     else if(m.kind==='ping')Net.send({kind:'pong',mode:MODE});
   });
-  Net.onOpen(()=>Net.send({kind:'hello',mode:MODE}));
+  Net.onOpen(()=>Net.send({kind:'hello',mode:MODE,timerUpdates:true}));
 
   /* ---------- оверлей ---------- */
   if(MODE==='overlay'){
@@ -120,7 +129,6 @@ if(MODE!=='panel'){
       q('.info').style.display=(V.title||gl)?'flex':'none';
       const sc=SCENES.includes(V.scene)?V.scene:'game';
       setScene(sc);placeScene(u);
-      const speaker=speechRemaining()>0?V.timer?.speaker:'';
       const bestMoves=[V.lh,V.lhExtra];
       tiles.forEach((t,i)=>{
         const s=V.seats[i]||{},role=ROLES[s.role]?s.role:'',st=s.status||'alive';
@@ -128,9 +136,8 @@ if(MODE!=='panel'){
         const res=sc==='game'?'':(sc==='red'||sc==='black')&&s.pid&&ROLES[role||'civ'].team===sc?' winner':' loser'; // на экранах итогов плашки уходят
         // победители показываются целиком, даже если их убили или заголосовали
         const out=st!=='alive'&&res!==' winner';
-        const speak=sc==='game'&&speaker===String(i);
         const nom=sc==='game'&&st==='alive'&&(V.noms||[]).some(n=>n.i===String(i));
-        t.className=`tile team-${role?ROLES[role].team:'norole'} r-${role||'none'} s-${out?st:'alive'}`+(out?' out':'')+res+(speak?' speak':'')+(nom?' nom':'');
+        t.className=`tile team-${role?ROLES[role].team:'norole'} r-${role||'none'} s-${out?st:'alive'}`+(out?' out':'')+res+(nom?' nom':'');
         const picks=bestMoves.find(lh=>lh?.pu===String(i))?.seats?.filter(Boolean)||[];
         const lp=t.querySelector('.lhp'),showLh=sc==='game'&&picks.length>0;
         lp.classList.toggle('on',showLh);
@@ -146,9 +153,7 @@ if(MODE!=='panel'){
         }
         t.querySelector('.nick span').textContent=s.nick||'—';
         t.querySelector('.st').innerHTML=st==='killed'?IC.cross+'<span>УБИТ</span>':st==='voted'?IC.hand+'<span>ЗАГОЛОСОВАН</span>':st==='removed'?IC.card+'<span>УДАЛЁН</span>':'';
-        // фолы видны у игроков в игре и у удалённых, если показ включён в пульте; на экране победы их нет
-        const fo=+s.fouls||0,fc=t.querySelector('.fc'),fon=sc==='game'&&V.showFouls!==false&&fo>0&&(st==='alive'||st==='removed');
-        fc.className='fc'+(fon?' on':'')+(fo>=4?' f4':fo===3?' f3':'');fc.textContent=fon?fo:'';
+        drawFouls(i);
       });
       // победители встают подряд по центру ряда; места считаются без сдвигов, поэтому повторный вызов ничего не ломает
       const wins=tiles.filter(t=>t.classList.contains('winner'));
@@ -196,22 +201,32 @@ if(MODE!=='panel'){
       }
     }
     /* ---- таймер речи; выставленные и лучший ход показываются на самих плашках ---- */
+    function drawFouls(i){
+      const s=V.seats[i]||{},st=s.status||'alive',fo=+s.fouls||0,fc=tiles[i].querySelector('.fc');
+      const visible=scene==='game'&&V.showFouls!==false&&fo>0&&(st==='alive'||st==='removed');
+      fc.className='fc'+(visible?' on':'')+(fo>=4?' f4':fo===3?' f3':'');
+      fc.textContent=visible?fo:'';
+    }
     function drawProtocol(){
       const sp=V.timer?.speaker||'';
       q('.spk .sw').textContent=sp===''?'':`${+sp+1} · ${(V.seats[+sp]||{}).nick||''}`;
       q('.spk .sw').style.display=sp===''?'none':'';
+      const speaker=scene==='game'&&timerClock.remaining()>0?sp:'';
+      tiles.forEach((tile,i)=>tile.classList.toggle('speak',speaker===String(i)));
       tickTimer();
     }
-    function speechRemaining(){
-      const t=V?.timer;
-      return t?Math.max(0,t.remain-(t.running?Date.now()-viewAt:0)):0;
-    }
+    drawTimerUpdate=foul=>{
+      if(foul)drawFouls(foul.seat);
+      drawProtocol();
+    };
     function tickTimer(){
       const t=V?.timer;if(!t)return;
-      const ms=speechRemaining(),s=Math.ceil(ms/1000);
-      q('.spk').classList.toggle('on',ms>0&&(!!t.speaker||t.running));
-      if(ms<=0){q('.tile.speak')?.classList.remove('speak');return}
-      q('.spk .clk').textContent=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+      const ms=timerClock.remaining(),s=Math.ceil(ms/1000);
+      const visible=ms>0&&!!t.speaker;
+      q('.spk').classList.toggle('on',visible);
+      if(!visible){q('.tile.speak')?.classList.remove('speak');return}
+      const clock=q('.spk .clk'),text=Math.floor(s/60)+':'+String(s%60).padStart(2,'0');
+      if(clock.textContent!==text)clock.textContent=text;
     }
     setInterval(tickTimer,200);
   }
