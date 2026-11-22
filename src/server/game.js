@@ -27,10 +27,20 @@ function createGame(dir, rulesFile) {
     }
     return state;
   }
+  function reconcileFinishedDay(state) {
+    const previous = rules.S;
+    rules.S = state;
+    try {
+      rules.resumeFinishedDay();
+    } finally {
+      rules.S = previous;
+    }
+  }
   const stored = storage.game();
   if (stored) {
     rules.S = makeState(stored);
     if (!validState(rules.S)) throw new Error('Сохранённая игра не прошла проверку формата.');
+    reconcileFinishedDay(rules.S);
   }
 
   function persist(state, receipt, deleted = []) {
@@ -117,8 +127,9 @@ function createGame(dir, rulesFile) {
       const error = applyEdits(candidate, ops);
       if (error) return { error };
       if (!validState(candidate)) return { error: 'Некорректные данные игры.' };
-      const day = candidate.days.at(-1);
-      if (day.changed) day.changed = day.changed.filter(i => candidate.seats[i].status === rules.S.seats[i].status);
+      for (const day of candidate.days) {
+        if (day.changed) day.changed = day.changed.filter(i => candidate.seats[i].status === rules.S.seats[i].status);
+      }
       const deleted = deletedPhotos(candidate);
       return { error: persist(candidate, receipt, deleted), deleted };
     },
@@ -134,7 +145,9 @@ function createGame(dir, rulesFile) {
       if (!Array.isArray(value?.seats) || !Array.isArray(value.roster) ||
           !Array.isArray(value.nights) || !value.nights.length) return null;
       const state = makeState(value);
-      return validState(state) ? { state, photos: Object.create(null), size: 0 } : null;
+      if (!validState(state)) return null;
+      reconcileFinishedDay(state);
+      return { state, photos: Object.create(null), size: 0 };
     },
     importPhoto(draft, pid, data) {
       if (!validPhoto(pid, data)) return false;

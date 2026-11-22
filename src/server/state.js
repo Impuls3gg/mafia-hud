@@ -23,6 +23,14 @@ const validBallot = value => list(value, 10, item => fields(item, {
   i: seat, v: v => v === '' || integer(v, 10), voters: optional(uniqueSeats),
 }) && (item.voters === undefined || item.v === item.voters.length)) &&
   uniqueSeats(value.flatMap(item => item.voters || []));
+const votingFields = {
+  noms: validBallot, revote: optional(validBallot), stage: optional(s => ['vote', 'revote', 'lift', 'done'].includes(s)),
+  tied: optional(validSeats), out: optional(validSeats),
+  voteSeats: optional(uniqueSeats), revoteSeats: optional(uniqueSeats),
+  mainReview: optional(review => fields(review, {
+    stage: s => ['revote', 'lift', 'done'].includes(s), noms: validBallot,
+  })),
+};
 const deathReport = row => fields(row, {
   i: seat, manual: value => typeof value === 'boolean', black: uniqueSeats, red: uniqueSeats, sheriff: maybeSeat,
   dismissedNight: optional(value => integer(value, 1000) && value > 0),
@@ -88,9 +96,11 @@ function validState(state) {
     })) && v.length === 10,
     nights: v => list(v, 1000, n => fields(n, { shot: maybeSeat, check: maybeSeat, don: maybeSeat })) && v.length > 0,
     days: v => list(v, 1000, d => fields(d, {
-      noms: validBallot, revote: optional(validBallot), stage: optional(s => ['vote', 'revote', 'lift', 'done'].includes(s)),
-      tied: optional(validSeats), out: optional(validSeats), changed: optional(validSeats),
+      ...votingFields,
+      changed: optional(validSeats), correction: optional(draft => fields(draft, votingFields)),
       nightAtStart: optional(n => integer(n, 1000)), nightAtEnd: optional(n => integer(n, 1000)),
+      opener: optional(n => integer(n, 9)),
+      morningPending: optional(value => typeof value === 'boolean'),
     })) && v.length > 0,
     timer: v => timer(v, true), wait: v => timer(v, false),
     lh: v => list(v, 3, maybeSeat) && v.length === 3, lhPu: maybeSeat,

@@ -62,7 +62,7 @@ test('неверное поле или конфликт отклоняет ве�
   assert.equal(game.state().seats[0].role, '');
 });
 
-test('отмена голосования откатывает только изменения голосования', t => {
+test('исправление голосования возвращает только игроков, выбывших по этому результату', t => {
   const game = fixture(t).game();
   game.open();
   game.command({ a: 'shot', i: 2 });
@@ -76,9 +76,13 @@ test('отмена голосования откатывает только из
   game.command({ a: 'voteEnd' });
   game.command({ a: 'lift', v: 'up' });
   assert.equal(game.state().seats[1].status, 'voted');
-  game.command({ a: 'voteReset' });
+  game.command({ a: 'voteReset', day: 0, round: 'revote' });
+  assert.equal(game.state().seats[1].status, 'voted');
+  game.command({ a: 'voteEnd', day: 0 });
+  game.command({ a: 'lift', day: 0, v: 'stay' });
   assert.equal(game.state().seats[0].status, 'voted');
   assert.equal(game.state().seats[1].status, 'alive');
+  assert.equal(game.state().days.length, 2);
 });
 
 test('числовой ввод и поимённые голоса работают вместе в основном раунде и переголосовании', t => {
@@ -108,6 +112,50 @@ test('числовой ввод и поимённые голоса работа�
   assert.equal(restored.revote[0].voters.join(), '0,1,2,3,4');
   assert.equal(restored.revote[2].voters.join(), '5,6,7,8');
   assert.equal(restored.out.join(), '1');
+});
+
+test('старое сохранение с законченным голосованием открывает следующий день и сохраняет исторический подсчёт', t => {
+  const files = fixture(t), game = files.game();
+  game.open();
+  const legacy = structuredClone(game.state());
+  legacy.days = [{
+    stage: 'done', noms: [{ i: '0', v: 5 }, { i: '1', v: 4 }], out: ['0'], changed: ['0'],
+  }];
+  legacy.seats[0].status = 'voted';
+  legacy.seats[9].status = 'removed';
+  files.db().prepare('UPDATE game SET state=? WHERE id=1').run(JSON.stringify(legacy));
+
+  const restored = files.game();
+  assert.equal(restored.view().day, 2);
+  assert.equal(restored.judgeState().opener, 1);
+  assert.ok(restored.command({ a: 'voteReset', day: 0 }));
+  const draft = restored.judgeState().days[0].correction;
+  assert.equal(draft.voters, 9);
+  assert.equal(draft.eligibleVoters, null);
+  assert.ok(restored.command({ a: 'vote', day: 0, i: 0, v: 4 }));
+  assert.ok(restored.command({ a: 'voteEnd', day: 0 }));
+  assert.equal(restored.state().days[0].out.join(), '1');
+  assert.equal(restored.state().seats[0].status, 'alive');
+  assert.equal(restored.state().seats[9].status, 'removed');
+  assert.equal(files.game().view().day, 2);
+});
+
+test('открывающий стол меняется по кругу среди оставшихся игроков', t => {
+  const files = fixture(t), game = files.game();
+  game.open();
+  assert.equal(game.judgeState().opener, 0);
+  for (let i = 1; i < 8; i++) game.command({ a: 'status', i, v: 'removed' });
+  game.command({ a: 'nom', i: 9 });
+  game.command({ a: 'voteEnd' });
+  assert.equal(game.judgeState().opener, 8);
+  const restored = files.game();
+  assert.equal(restored.judgeState().opener, 8);
+  restored.command({ a: 'nom', i: 8 });
+  restored.command({ a: 'voteEnd' });
+  assert.equal(restored.judgeState().opener, 0);
+  restored.command({ a: 'timer', op: 'speak', v: '0' });
+  restored.command({ a: 'shot', i: 0 });
+  assert.equal(restored.judgeState().opener, 0, 'открывающий уже начавшегося дня сохраняется');
 });
 
 test('удаление игрока убирает обычное и ролевое фото из SQLite', t => {

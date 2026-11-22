@@ -160,7 +160,7 @@ test('протокол дня: выставления, голоса, тайме�
   cmd({ a: 'timer', op: 'set', ms: 30000 });
   assert.ok(await until(() => state().timer.total === 30000 && state().timer.remain === 30000));
   cmd({ a: 'timer', op: 'speak', v: '99' }); // несуществующее место не принимается
-  cmd({ a: 'day' });
+  cmd({ a: 'voteEnd' });
   assert.ok(await until(() => state().days.length === 2 && state().timer.speaker === ''), 'новый день не начался');
   assert.deepEqual(view(screen).noms, [], 'на худе выставленные нового дня');
 
@@ -213,6 +213,7 @@ test('страница судьи: баллы и лучший ход вводя�
     input.form.requestSubmit();
   })()`);
   assert.ok(await until(() => stored().lhExtra?.pu === '7'));
+  assert.ok(await until(() => page.run("document.querySelectorAll('.lhb.set').length===2")));
   assert.deepEqual(await page.run("[...document.querySelectorAll('.lhb.set')].map(b=>b.textContent)"), ['3 5 10', '2 4 6']);
   await page.run(`(()=>{
     const f=document.createElement('iframe');f.id='lh-hud';f.src=${JSON.stringify('/hud#' + rooms.hud)};document.body.append(f);
@@ -601,7 +602,7 @@ test('поимённое голосование переносит голос м
   const server = await startServer(t, SECRET);
   const { rooms, host } = await openGame(t, server);
   const page = await openPage(t, `${server.http}/#${rooms.room}`);
-  const day = () => lastOf(host, 'game').S.days.at(-1);
+  const day = () => lastOf(host, 'game').S.days[0];
   assert.ok(await until(() => page.run("!!document.querySelector('.player')"), 20000));
   for (const i of [1, 3, 5]) await page.run(`document.querySelectorAll('.player')[${i}].querySelector('.nomb').click()`);
   const row = i => `document.querySelectorAll('.cand')[${i}]`;
@@ -625,8 +626,34 @@ test('поимённое голосование переносит голос м
   await page.run("document.querySelector('#vote .go').click()");
   assert.ok(await until(() => day().stage === 'done'));
   assert.deepEqual(day().noms.map(n => [n.v, n.voters]), [[1, ['2']], [0, []], [9, ['0', '1', '3', '4', '5', '6', '7', '8', '9']]]);
-  assert.ok(await until(() => page.run("!!document.querySelector('.saved-ballot')")));
-  assert.match(await page.run("document.querySelector('.saved-ballot li').textContent"), /№ 3/);
+  const history = "#voteHistory .saved-ballot";
+  assert.ok(await until(() => page.run(`!!document.querySelector('${history}')`)));
+  assert.equal(await page.run(`document.querySelector('${history}').open`), false);
+  await page.run(`document.querySelector('${history} summary').click()`);
+  const historyValues = () => page.run(`[...document.querySelectorAll('${history} tbody tr:first-child td')].slice(1).map(cell=>cell.textContent)`);
+  assert.deepEqual(await historyValues(), ['1', '3']);
+  assert.match(await page.run(`document.querySelector('${history} summary').textContent`), /День 1.*Ушёл: 6/);
+  await page.run("document.getElementById('namedVotes').click()");
+  assert.equal(await page.run(`document.querySelector('${history}').open`), true);
+  assert.deepEqual(await historyValues(), ['1']);
+  assert.ok(await until(() => page.run("document.getElementById('dayTitle').textContent.endsWith('день 2')")));
+  assert.deepEqual(await historyValues(), ['1']);
+  assert.equal(await page.run(`(() => {
+    const current=document.getElementById('vote'),history=document.querySelector('.vote-history');
+    return document.querySelector('${history}').open
+      && current.getBoundingClientRect().bottom<history.getBoundingClientRect().top
+      && parseFloat(getComputedStyle(history).borderTopWidth)>0;
+  })()`), true);
+  await page.run("document.getElementById('namedVotes').click()");
+  await page.run(`document.querySelector('${history} .edit-archive').click()`);
+  const archivedVoter = ".archive-edit .cand:first-of-type [data-voter=\"5\"]";
+  assert.ok(await until(() => page.run(`!!document.querySelector('${archivedVoter}')`)));
+  await page.run(`document.querySelector('${archivedVoter}').click()`);
+  assert.ok(await until(() => day().correction?.noms[0].voters.includes('5')));
+  assert.ok(await until(() => page.run("!!document.querySelector('.archive-edit .go:not(:disabled)')")));
+  await page.run("document.querySelector('.archive-edit .go').click()");
+  assert.ok(await until(() => !day().correction && day().noms[0].voters.join() === '2,5'));
+  assert.equal(lastOf(host, 'game').S.days.length, 2);
 });
 
 test('голосование: итог, переголосование при равенстве и вопрос «подняли/оставили»', async t => {
@@ -643,18 +670,20 @@ test('голосование: итог, переголосование при р
   cmd({ a: 'nom', i: 1 }); cmd({ a: 'nom', i: 4 });
   cmd({ a: 'vote', i: 1, v: 6 }); cmd({ a: 'vote', i: 1, v: 11 }); // 11 голосов не бывает
   assert.ok(await until(() => day().noms.map(n => n.v).join() === '6,4'));
+  assert.equal(state().days.length, 1);
   cmd({ a: 'voteEnd' });
-  assert.ok(await until(() => day().stage === 'done' && day().out.join() === '1'), 'лидер не покинул стол');
+  assert.ok(await until(() => state().days.length === 2 && state().days[0].out.join() === '1'), 'лидер не покинул стол');
   assert.equal(state().seats[1].st, 'voted');
   assert.ok(await until(() => lifted() === ''), 'после итога плашки опускаются');
-  cmd({ a: 'nom', i: 7 }); // после итога выставлять нельзя
-  cmd({ a: 'voteReset' });
-  assert.ok(await until(() => day().stage === 'vote' && state().seats[1].st === 'alive'), '«Изменить» не вернул игрока');
-  assert.equal(day().noms.length, 2);
+  cmd({ a: 'voteReset', day: 0 });
+  assert.ok(await until(() => state().days[0].correction?.stage === 'vote'));
+  assert.equal(state().seats[1].st, 'voted');
+  cmd({ a: 'cancelVoteEdit', day: 0 });
+  assert.ok(await until(() => !state().days[0].correction));
 
   // день 2: поровну → переголосование → снова поровну → подняли
-  cmd({ a: 'day' });
   cmd({ a: 'nom', i: 2 }); cmd({ a: 'nom', i: 5 }); cmd({ a: 'nom', i: 8 });
+  cmd({ a: 'status', i: 1, v: 'alive' }); // судья вернул игрока, за столом снова 10 голосов
   cmd({ a: 'vote', i: 2, v: 4 }); cmd({ a: 'vote', i: 5, v: 4 });
   cmd({ a: 'voteEnd' });
   assert.ok(await until(() => day().stage === 'revote' && day().revote.map(n => n.i).join() === '2,5'), 'нет переголосования между равными');
@@ -663,18 +692,19 @@ test('голосование: итог, переголосование при р
   cmd({ a: 'vote', i: 2, v: 5 });
   cmd({ a: 'voteEnd' });
   assert.ok(await until(() => day().stage === 'lift' && day().tied.join() === '2,5'), 'нет вопроса «подняли/оставили»');
+  assert.equal(state().days.length, 2);
   cmd({ a: 'lift', v: 'up' });
-  assert.ok(await until(() => day().out.join() === '2,5' && state().seats[2].st === 'voted' && state().seats[5].st === 'voted'), '«Подняли» не убрал обоих');
+  assert.ok(await until(() => state().days[1].out.join() === '2,5' && state().seats[2].st === 'voted' && state().seats[5].st === 'voted'), '«Подняли» не убрал обоих');
+  assert.equal(state().days.length, 3);
 
   // день 3: снова поровну дважды → оставили
-  cmd({ a: 'day' });
   cmd({ a: 'nom', i: 0 }); cmd({ a: 'nom', i: 9 });
   cmd({ a: 'vote', i: 0, v: 4 }); cmd({ a: 'voteEnd' });
   assert.ok(await until(() => day().stage === 'revote'));
   cmd({ a: 'vote', i: 0, v: 4 }); cmd({ a: 'voteEnd' });
   assert.ok(await until(() => day().stage === 'lift'));
   cmd({ a: 'lift', v: 'stay' });
-  assert.ok(await until(() => day().stage === 'done' && day().out.length === 0), '«Оставили» должен оставить всех');
+  assert.ok(await until(() => state().days.length === 4 && state().days[2].out.length === 0), '«Оставили» должен оставить всех');
   assert.equal(state().seats[0].st, 'alive');
 });
 
@@ -688,6 +718,7 @@ test('судья может исправить каждый раунд голо�
   const vote = n => click(`.cand .v11 button[aria-label="Голосов за 1: ${n}"]`);
   const save = () => click('#vote .go');
   const edit = () => click('#vote .edit-vote');
+  const marked = () => page.run("[...document.querySelectorAll('.player')].flatMap((row,i)=>row.querySelector('.nomb.on')?[i+1]:[])");
   const openRound = async index => {
     await edit();
     assert.ok(await page.run("!document.getElementById('voteRounds').hidden"));
@@ -695,54 +726,100 @@ test('судья может исправить каждый раунд голо�
   };
   const stage = name => until(() => day().stage === name &&
     page.run(`last.days.at(-1).stage===${JSON.stringify(name)}`));
+  const original = () => stored().days[0], draft = () => original().correction;
+  const editor = '.archive-edit[data-day="0"]';
+  const editArchive = async round => {
+    const detail = `details[data-round="0-${round}"]`;
+    if (!await page.run(`document.querySelector('${detail}').open`)) await click(detail + ' summary');
+    await click(detail + ' .edit-archive');
+    assert.ok(await until(() => draft()?.stage === round && page.run(`!!document.querySelector('${editor} .go')`)));
+  };
+  const archivedVote = n => click(`${editor} .v11 button[aria-label="Голосов за 1: ${n}"]`);
+  const saveArchive = () => click(editor + ' .go');
   assert.ok(await until(() => page.run("!!document.querySelector('#vote .edit-vote')"), 20000));
   await edit();
   assert.equal(await page.run("document.activeElement.classList.contains('nomb')"), true);
   await click('.player:nth-child(1) .nomb');
   await click('.player:nth-child(2) .nomb');
-  assert.ok(await until(() => page.run("document.querySelectorAll('#vote .cand').length===2")));
+  await click('.player:nth-child(3) .nomb');
+  assert.ok(await until(() => page.run("document.querySelectorAll('#vote .cand').length===3")));
+  assert.deepEqual(await marked(), [1, 2, 3]);
   await edit();
   assert.equal(await page.run("document.activeElement.closest('.v11')!==null"), true);
-  await vote(5);
+  await vote(4);
+  await click('.cand .v11 button[aria-label="Голосов за 2: 4"]');
   assert.ok(await until(() => page.run("!document.querySelector('#vote .go').disabled")));
   await save();
   assert.ok(await stage('revote'));
+  assert.deepEqual(await marked(), [1, 2]);
+  assert.deepEqual(await page.run("[...document.querySelectorAll('#voteHistory summary')].map(el=>el.textContent)"),
+    ['День 1 · Основное голосование']);
+  assert.equal(await page.run("[...document.querySelectorAll('.nomb.on')].every(button=>button.disabled)"), true);
 
   await openRound(2);
   assert.equal(await page.run("document.activeElement.closest('.v11')!==null"), true);
   await vote(5);
   assert.ok(await until(() => page.run("!document.querySelector('#vote .go').disabled")));
-  await save();
-  assert.ok(await stage('lift'));
-  await openRound(2);
-  assert.ok(await stage('revote'));
-  assert.equal(day().revote[0].v, 5);
-  await vote(6);
-  assert.ok(await until(() => day().revote[0].v === 6));
-  await save();
-  assert.ok(await stage('done'));
-  assert.equal(day().out.join(), '0');
-  assert.deepEqual(await page.run("[...document.querySelectorAll('#vote button')].map(b=>b.textContent).filter(text=>text.includes('день'))"), []);
-  assert.equal(await page.run("document.getElementById('newDay')"), null);
-
-  await openRound(2);
-  assert.ok(await stage('revote'));
-  assert.equal(stored().seats[0].status, 'alive');
-  assert.deepEqual(day().out, []);
-  assert.equal(day().revote[0].v, 6);
-  await vote(4);
-  assert.ok(await until(() => day().revote[0].v === 4));
-  await save();
-  assert.ok(await stage('done'));
-  assert.equal(day().out.join(), '1');
   await openRound(1);
   assert.ok(await stage('vote'));
+  assert.equal(day().revote[0].v, 5);
+  await save();
+  assert.ok(await stage('revote'));
+  assert.equal(day().revote[0].v, 5);
+  await save();
+  assert.ok(await stage('lift'));
+  assert.deepEqual(await marked(), [1, 2]);
+  await page.run("document.querySelectorAll('#voteHistory summary')[0].click()");
+  assert.deepEqual(await page.run("[...document.querySelectorAll('#voteHistory details:first-child tbody tr')].map(row=>row.cells[1].textContent)"),
+    ['5', '5']);
+  await click('#vote .lift .up');
+  assert.ok(await until(() => stored().days.length === 2 && original().stage === 'done'));
+  assert.ok(await until(() => page.run("last.days.length===2")));
+  assert.match(await page.run("document.querySelector('#voteHistory summary').textContent"), /Переголосование · Ушли: 1, 2/);
+  await click('.player:nth-child(4) .nomb');
+  assert.ok(await until(() => page.run("!!document.querySelector('#vote .go')")));
+  await save();
+  assert.ok(await until(() => page.run("last.days.length===3")));
+  await click('.player:nth-child(5) .nomb');
+  await click('.player:nth-child(6) .speech-actions button');
+  assert.ok(await until(() => stored().timer.speaker === '5' && day().noms[0]?.i === '4'));
+  const timer = structuredClone(stored().timer), later = structuredClone(stored().days.slice(1));
+
+  await editArchive('revote');
+  assert.equal(draft().revote[0].v, 5);
+  await archivedVote(6);
+  assert.ok(await until(() => draft()?.revote[0].v === 6));
+  assert.equal(original().out.join(), '0,1');
+  assert.equal(stored().seats[1].status, 'voted');
+  await saveArchive();
+  assert.ok(await until(() => !draft() && original().out.join() === '0'));
   assert.equal(stored().seats[1].status, 'alive');
-  assert.equal(day().noms[0].v, 5);
-  assert.deepEqual(day().revote, []);
+
+  await editArchive('vote');
+  assert.equal(draft().noms[0].v, 4);
+  await saveArchive();
+  assert.ok(await until(() => !draft()));
+  assert.equal(original().revote[0].v, 6);
+
+  await editArchive('vote');
+  await archivedVote(5);
+  assert.ok(await until(() => draft()?.noms[0].v === 5));
+  await click(editor + ' .cancel-archive');
+  assert.ok(await until(() => !draft()));
+  assert.equal(original().noms[0].v, 4);
+  await editArchive('vote');
+  await archivedVote(5);
+  assert.ok(await until(() => draft()?.noms[0].v === 5));
+  await saveArchive();
+  assert.ok(await until(() => !draft() && original().noms[0].v === 5));
+  assert.equal(original().out.join(), '0');
+  assert.deepEqual(original().revote, []);
+  assert.deepEqual(stored().days.slice(1), later);
+  assert.deepEqual(stored().timer, timer);
+  assert.deepEqual(await marked(), [5]);
 });
 
-test('после ночи новый день открывается автоматически, последняя речь выбывшего относится к старому дню', { skip }, async t => {
+test('новый день открывается после итога, отстрел и выставление не перелистывают его ещё раз', { skip }, async t => {
   const server = await startServer(t, SECRET);
   const { rooms, host } = await openGame(t, server);
   const screen = await connect(t, server.url(rooms.hud, 'screen'));
@@ -754,38 +831,46 @@ test('после ночи новый день открывается автом�
   const player = (i, selector) => page.run(`document.querySelectorAll('.player')[${i}].querySelector(${JSON.stringify(selector)}).click()`);
   const save = () => page.run("document.querySelector('#vote .go').click()");
   const night = (k, seat) => page.run(`(() => {
-    const check=document.querySelector('[aria-label="Шериф, ночь ${k}"]');
+    const check=document.querySelector('[aria-label="Отстрел, ночь ${k}"]');
     check.value=${JSON.stringify(seat)};check.dispatchEvent(new Event('change'));
   })()`);
-  const saved = () => until(() => page.run("last.days.at(-1).stage==='done'"));
+  const newDay = n => until(() => page.run(`last.days.length===${n} && last.days.at(-2).stage==='done'`));
+  const opener = () => page.run("document.querySelector('.player.day-opener .no')?.textContent");
   assert.ok(await ready());
+  assert.equal(await opener(), '1');
+  assert.equal(await page.run("getComputedStyle(document.querySelector('.player.day-opener')).outlineWidth"), '2px');
   await player(0, '.nomb');
   assert.ok(await until(() => page.run("!!document.querySelector('#vote .go')")));
+  assert.equal(state().days.length, 1);
+  assert.ok(await until(() => view(screen).day === 1));
   await save();
-  assert.ok(await saved());
-  assert.equal(await page.run("document.querySelectorAll('.nomb')[2].disabled"), true);
+  assert.ok(await newDay(2));
+  assert.ok(await until(() => view(screen).day === 2));
+  assert.equal(await opener(), '2');
 
   await player(0, '.speech-actions button');
   assert.ok(await until(() => state().timer.running && state().timer.speaker === '0'));
-  assert.equal(state().days.length, 1);
-  await night(1, '4');
-  assert.ok(await until(() => page.run("last.nextDayReady && !document.querySelectorAll('.nomb')[2].disabled")));
-  assert.ok(await page.run("last.days.length===1 && !!document.querySelector('#vote .edit-vote')"));
+  assert.equal(state().days.length, 2);
+  await night(1, '1');
+  assert.ok(await until(() => state().nights[0].shot === '1' && page.run("last.opener===2")));
+  assert.equal(await opener(), '3');
   await player(2, '.nomb');
   assert.ok(await until(() => page.run("last.days.length===2 && last.days[1].noms[0]?.i==='2'")));
   assert.deepEqual(state().days[0].out, ['0']);
 
   await save();
-  assert.ok(await saved());
+  assert.ok(await newDay(3));
   await player(3, '.speech-actions button');
   assert.ok(await until(() => page.run("last.days.length===3 && last.timer.speaker==='3'")));
-  assert.ok(await until(() => view(screen).day === 3 && view(screen).timer.speaker === '3'));
+  assert.equal(await opener(), '4');
+  assert.ok(await until(() => view(screen).day === 3 && lastOf(screen, 'timer')?.timer.speaker === '3'));
   assert.deepEqual(state().days[1].out, ['2']);
 
   await night(2, '5');
-  assert.ok(await until(() => page.run("last.nextDayReady")));
+  assert.ok(await until(() => state().nights[1].shot === '5'));
   await player(4, '.speech-actions button');
-  assert.ok(await until(() => page.run("last.days.length===4 && last.timer.speaker==='4'")));
+  assert.ok(await until(() => page.run("last.days.length===3 && last.timer.speaker==='4'")));
+  assert.equal(await opener(), '4');
   assert.equal(state().days[2].noms.length, 0);
 });
 

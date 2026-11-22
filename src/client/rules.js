@@ -29,7 +29,7 @@ function defaultState(){
 const SPEECH_MS=60000;
 const EXTRA_SPEECH_MS=30000;
 const WINNERS=['','red','black','draw']; // победа, которую ставит судья, как поле «Победитель» на MafiaUniverse
-function protocolDefaults(){return {days:[{noms:[]}],timer:{running:false,endAt:0,left:SPEECH_MS,total:SPEECH_MS,speaker:''},lh:['','',''],lhPu:'',lhExtra:null,deathReports:[],notes:'',winner:''}}
+function protocolDefaults(){return {days:[{noms:[],opener:0}],timer:{running:false,endAt:0,left:SPEECH_MS,total:SPEECH_MS,speaker:''},lh:['','',''],lhPu:'',lhExtra:null,deathReports:[],notes:'',winner:''}}
 // в играх, сохранённых до появления протокола, этих полей нет
 function protocol(){
   const d=protocolDefaults();
@@ -48,49 +48,81 @@ const curDay=()=>days()[days().length-1];
 const stageOf=d=>['vote','revote','lift','done'].includes(d.stage)?d.stage:'vote';
 const hasNightAction=n=>Boolean(n&&(n.shot||n.check||n.don));
 const recordedNights=()=>S.nights.findLastIndex(hasNightAction)+1;
-function nightBoundary(d){
-  const stage=stageOf(d);
-  if(stage==='done')return d.nightAtEnd;
-  if(stage==='vote'&&!d.noms.length)return d.nightAtStart;
+function nextOpeningSeat(previous,available){
+  for(let offset=1;offset<=S.seats.length;offset++){
+    const i=(previous+offset)%S.seats.length;
+    if(available(i))return i;
+  }
+  return previous;
 }
-function nextDayReady(){
-  const after=nightBoundary(curDay());
-  return after!==undefined&&recordedNights()>after;
+function openingSeat(){
+  const history=days(),stored=history.at(-1).opener;
+  if(stored!==undefined)return stored;
+  // Для сохранений без открывающего восстанавливаем порядок по выбывшим в протоколе.
+  const out=new Set();
+  let opener=history[0].opener??0,night=0;
+  for(let i=1;i<history.length;i++){
+    const d=history[i];
+    for(const seat of history[i-1].out||[])out.add(+seat);
+    while(night<(d.nightAtStart??0)&&night<S.nights.length){
+      const shot=S.nights[night++].shot;
+      if(shot)out.add(+shot);
+    }
+    opener=d.opener??nextOpeningSeat(opener,i=>S.seats[i].pid&&!out.has(i));
+  }
+  return opener;
+}
+function appendDay(nightAtStart=recordedNights()){
+  const previous=curDay();
+  previous.opener??=openingSeat();
+  const opener=nextOpeningSeat(previous.opener,i=>S.seats[i].pid&&statusOf(i)==='alive');
+  S.days.push({noms:[],stage:'vote',opener,nightAtStart,morningPending:true});
 }
 function startDay(){
+  appendDay();
   const t=timerOf();
-  S.days.push({noms:[],stage:'vote',nightAtStart:recordedNights()});
   t.running=false;t.speaker='';t.left=t.total;delete t.restartSpeaker;delete t.nominated;
 }
-function beginDayActivity(i,speech=false){
+function resumeFinishedDay(){
+  if(stageOf(curDay())==='done'&&S.days.length<1000)appendDay(curDay().nightAtEnd);
+}
+function beginDayActivity(i){
   if(!S.seats[i]?.pid||statusOf(i)!=='alive')return;
-  const d=curDay(),stage=stageOf(d);
-  // Первая дневная речь может начать день и после ночи без записанных действий.
-  if(nextDayReady()||(speech&&stage==='done'))startDay();
-  else if(stage==='vote')d.nightAtStart??=recordedNights();
+  const d=curDay();
+  if(d.morningPending){
+    updateMorningOpener();
+    d.nightAtStart=recordedNights();
+    delete d.morningPending;
+  }else d.nightAtStart??=recordedNights();
 }
 const eligibleVoters=()=>S.seats.flatMap((s,i)=>s.pid&&statusOf(i)==='alive'?[String(i)]:[]);
+function updateMorningOpener(){
+  const d=curDay();
+  if(d.morningPending){
+    const previous=days().at(-2)?.opener??0;
+    d.opener=nextOpeningSeat(previous,i=>S.seats[i].pid&&statusOf(i)==='alive');
+  }
+}
 function votingList(d){
   const st=stageOf(d);
   return st==='vote'?d.noms:st==='revote'?d.revote:null;
 }
 // Последняя кандидатура получает голоса, которые ещё не были отданы.
-function ballot(d){
+function ballot(d,electorate=eligibleVoters(),total=electorate?.length??0){
   const list=votingList(d);
   if(!list)return stageOf(d)==='lift'?(d.tied||[]).map(i=>({i,v:''})):[];
   if(!list.length)return [];
-  const eligible=eligibleVoters();
   const earlier=list.slice(0,-1).map(n=>{
     if(!n.voters)return n;
-    const voters=n.voters.filter(v=>eligible.includes(v));
+    const voters=electorate?n.voters.filter(v=>electorate.includes(v)):n.voters;
     return {i:n.i,v:voters.length,voters};
   });
-  const remain=eligible.length-earlier.reduce((sum,n)=>sum+(+n.v||0),0);
+  const remain=total-earlier.reduce((sum,n)=>sum+(+n.v||0),0);
   const v=remain>=0&&earlier.every(n=>n.v!=='')?remain:'';
   const last={i:list.at(-1).i,v};
-  if(v!==''&&earlier.every(n=>n.v===0||n.voters)){
+  if(electorate&&v!==''&&earlier.every(n=>n.v===0||n.voters)){
     const assigned=new Set(earlier.flatMap(n=>n.voters||[]));
-    last.voters=eligible.filter(i=>!assigned.has(i));
+    last.voters=electorate.filter(i=>!assigned.has(i));
   }
   return [...earlier,last];
 }
@@ -98,13 +130,38 @@ function clearLastVote(list){
   const last=list.at(-1);
   if(last){last.v='';delete last.voters}
 }
-function dayMsg(d){
-  const st=stageOf(d),active=d===curDay();
+// Голоса за последнего кандидата вычисляются из остальных голосов.
+const primaryVoteKey=list=>JSON.stringify([list.at(-1)?.i,list.slice(0,-1).map(n=>[n.i,n.v,n.voters||[]])]);
+const unchangedPrimary=d=>d.mainReview&&primaryVoteKey(d.noms)===primaryVoteKey(d.mainReview.noms);
+function archivedDay(c){
+  return Number.isInteger(c.day)&&c.day>=0&&c.day<days().length-1?days()[c.day]:null;
+}
+const voteTarget=c=>c.day===undefined?curDay():archivedDay(c)?.correction;
+function voteElectorate(d,archive){
+  if(!archive){
+    const seats=eligibleVoters();
+    return {seats,total:seats.length};
+  }
+  const savedRevote=stageOf(d)==='revote'&&archive.revote?.length;
+  const list=savedRevote?archive.revote:archive.noms;
+  const stored=savedRevote?archive.revoteSeats:archive.voteSeats;
+  const total=stored?.length??list.reduce((sum,n)=>sum+(+n.v||0),0);
+  // Для старых результатов список можно восстановить только при известном голосе каждого участника.
+  const named=list.flatMap(n=>n.voters||[]);
+  const seats=stored??(named.length===total?named.sort():null);
+  return {seats,total};
+}
+function dayMsg(d,archive){
+  const st=stageOf(d),active=!!archive||d===curDay();
   const copy=list=>list.map(n=>({i:n.i,v:n.v,...(n.voters?{voters:n.voters}:{})}));
+  const {seats,total}=voteElectorate(d,archive);
   return {
-    noms:copy(active&&st==='vote'?ballot(d):d.noms),stage:st,
-    revote:copy(active&&st==='revote'?ballot(d):(d.revote||[])),
-    tied:[...(d.tied||[])],out:[...(d.out||[])]
+    noms:copy(active&&st==='vote'?ballot(d,seats,total):d.noms),stage:st,
+    revote:copy(active&&st==='revote'?ballot(d,seats,total):(d.revote||[])),
+    tied:[...(d.tied||[])],out:[...(d.out||[])],
+    ...(d.mainReview?{reviewStage:d.mainReview.stage,mainUnchanged:unchangedPrimary(d)}:{}),
+    ...(archive?{eligibleVoters:seats,voters:total}:{}),
+    ...(d.correction?{correction:dayMsg(d.correction,d)}:{})
   };
 }
 const timerOf=()=>S.timer&&typeof S.timer==='object'?S.timer:protocolDefaults().timer;
@@ -158,9 +215,6 @@ function deathReportsView(){
 function nextNight(){
   const k=S.nights.length-1;
   if(!hasNightAction(S.nights[k]))return;
-  const d=curDay();
-  // Старые игры не хранят номер ночи на момент завершения голосования.
-  if(stageOf(d)==='done')d.nightAtEnd??=k;
   S.nights.push({shot:'',check:'',don:''});
 }
 function statusOf(i){
@@ -189,12 +243,12 @@ function stateMsg(){
     return {nick:seatNick(i),role:s.role,st:statusOf(i),kn:shotNight(i)+1,fouls:+s.fouls||0,b:scoreOf(s.bonus),p:scoreOf(s.pen),
       t:techPenalty(s),techFouls,techFoulCount:techFouls.length};
   }),nights:S.nights.map(n=>({shot:n.shot||'',check:n.check||'',don:n.don||''})),
-    days:days().map(dayMsg),nextDayReady:nextDayReady(),voters:eligible.length,eligibleVoters:eligible,timer:timerView(),pu:firstKilled(),lh:(Array.isArray(S.lh)?S.lh:['','','']).map(String),lhExtra:S.lhExtra||null,deathReports:deathReportsView(),notes:typeof S.notes==='string'?S.notes:'',winner:WINNERS.includes(S.winner)?S.winner:''};
+    days:days().map(d=>dayMsg(d)),opener:openingSeat(),voters:eligible.length,eligibleVoters:eligible,timer:timerView(),pu:firstKilled(),lh:(Array.isArray(S.lh)?S.lh:['','','']).map(String),lhExtra:S.lhExtra||null,deathReports:deathReportsView(),notes:typeof S.notes==='string'?S.notes:'',winner:WINNERS.includes(S.winner)?S.winner:''};
 }
 // ночь для кнопки «Убит»: текущая, а если в ней пусто, предыдущая без отстрела (там уже могут быть проверки)
 function shotTarget(){
   const ns=S.nights;let k=ns.length-1;
-  const d=curDay(),after=nightBoundary(d)??(stageOf(d)==='done'?k:0);
+  const after=curDay().nightAtStart??0;
   if(k>after&&!hasNightAction(ns[k])&&!ns[k-1].shot)k--;
   return k;
 }
@@ -216,19 +270,21 @@ const J={
   },
   status(c){if(['alive','voted','removed'].includes(c.v)){
     const s=S.seats[c.i];s.status=c.v;if(c.v==='alive'&&(+s.fouls||0)>=4)s.fouls=3;
-    const d=curDay();if(d.changed)d.changed=d.changed.filter(i=>i!==String(c.i));
+    for(const d of days())if(d.changed)d.changed=d.changed.filter(i=>i!==String(c.i));
+    updateMorningOpener();
   }},
   shot(c){
     const was=shotNight(c.i);
-    if(was>=0){S.nights[was].shot='';return}
-    S.nights[shotTarget()].shot=String(c.i);
-    nextNight();
+    if(was>=0)S.nights[was].shot='';
+    else{S.nights[shotTarget()].shot=String(c.i);nextNight()}
+    updateMorningOpener();
   },
   night(c){
     const night=Number.isInteger(c.k)?S.nights[c.k]:null,v=String(c.v);
     if(!night||!['shot','check','don'].includes(c.f)||(v!==''&&!(/^\d+$/.test(v)&&S.seats[+v])))return;
     night[c.f]=v;
     nextNight();
+    if(c.f==='shot')updateMorningOpener();
   },
   // выставление на голосование в текущий день: повторное нажатие снимает, порядок выставления сохраняется
   nom(c){
@@ -250,16 +306,20 @@ const J={
   },
   // число голосов за кандидата текущего этапа (0–10)
   vote(c){
-    const list=votingList(curDay()),v=Number(c.v);
+    const d=voteTarget(c);if(!d)return;
+    const list=votingList(d),v=Number(c.v);
     const n=list?.slice(0,-1).find(x=>x.i===String(c.i));
     if(!n||!Number.isInteger(v)||v<0||v>10)return;
-    const current=ballot(curDay()).find(row=>row.i===n.i).v;
+    const {seats,total}=voteElectorate(d,archivedDay(c));
+    const current=ballot(d,seats,total).find(row=>row.i===n.i).v;
     if(current!==v){n.v=v;delete n.voters}
   },
   voteVoter(c){
-    const list=votingList(curDay()),earlier=list?.slice(0,-1),voter=c.voter;
+    const d=voteTarget(c);if(!d)return;
+    const list=votingList(d),earlier=list?.slice(0,-1),voter=c.voter;
     const target=earlier?.find(n=>n.i===String(c.i));
-    if(!target||(voter!==''&&!eligibleVoters().includes(voter)))return;
+    const {seats}=voteElectorate(d,archivedDay(c));
+    if(!target||!seats||(voter!==''&&!seats.includes(voter)))return;
     clearLastVote(list);
     if(voter===''){
       target.voters=[];target.v=0;
@@ -276,34 +336,71 @@ const J={
     }
   },
   // итог этапа: один лидер покидает стол, при равенстве — переголосование, а после него — вопрос «поднять всех?»
-  voteEnd(){
-    const d=curDay(),st=stageOf(d);if(st!=='vote'&&st!=='revote')return;
-    const list=ballot(d),lastVote=list.at(-1)?.v;
+  voteEnd(c){
+    const d=voteTarget(c);if(!d)return;
+    const archive=archivedDay(c),st=stageOf(d);if(st!=='vote'&&st!=='revote')return;
+    if(st==='vote'&&unchangedPrimary(d)){
+      d.noms=d.mainReview.noms;
+      d.stage=d.mainReview.stage;
+      delete d.mainReview;
+      if(d.stage==='done'){
+        if(archive)savePastVote(archive,d);
+        else voteOut(d,d.out||[]);
+      }
+      return;
+    }
+    const {seats,total}=voteElectorate(d,archive);
+    const list=ballot(d,seats,total),lastVote=list.at(-1)?.v;
     if(lastVote===undefined||lastVote==='')return;
-    if(st==='vote')d.noms=list;else d.revote=list;
+    if(d.mainReview){
+      delete d.mainReview;
+      d.revote=[];d.tied=[];d.out=[];delete d.revoteSeats;
+    }
+    if(st==='vote'){
+      d.noms=list;
+      if(seats)d.voteSeats=seats;
+    }else{
+      d.revote=list;
+      if(seats)d.revoteSeats=seats;
+    }
     const max=Math.max(...list.map(n=>+n.v||0)),lead=list.filter(n=>(+n.v||0)===max).map(n=>n.i);
-    if(lead.length===1)voteOut(d,lead);
+    if(lead.length===1)voteOut(d,lead,archive);
     else if(st==='vote'){d.stage='revote';d.revote=lead.map(i=>({i,v:''}))}
     else{d.stage='lift';d.tied=lead}
   },
-  lift(c){const d=curDay();if(stageOf(d)!=='lift')return;if(c.v==='up')voteOut(d,d.tied);else if(c.v==='stay')voteOut(d,[])},
-  // При редактировании возвращаем только игроков, выбывших по этому итогу.
+  lift(c){
+    const d=voteTarget(c);if(!d||stageOf(d)!=='lift')return;
+    if(c.v==='up'||c.v==='stay')voteOut(d,c.v==='up'?d.tied:[],archivedDay(c));
+  },
   voteReset(c){
-    const d=curDay(),round=c.round??'vote';
-    if(!['vote','revote'].includes(round)||(round==='revote'&&!d.revote?.length))return;
-    (d.changed||[]).forEach(i=>{const s=S.seats[+i];if(s&&s.status==='voted')s.status='alive'});
-    d.stage=round;d.tied=[];d.out=[];d.changed=[];
-    if(round==='vote')d.revote=[];
+    const archive=archivedDay(c),round=c.round??'vote';
+    if(c.day!==undefined&&!archive)return;
+    let d=archive?.correction??archive??curDay();
+    if(!['vote','revote'].includes(round)||!d.noms.length||d.mainReview||(round==='revote'&&!d.revote?.length))return;
+    if(d===archive){
+      const {noms,revote,stage,tied,out,voteSeats,revoteSeats}=archive;
+      d=archive.correction=JSON.parse(JSON.stringify({noms,revote,stage,tied,out,voteSeats,revoteSeats}));
+    }
+    const stage=stageOf(d);
+    if(round==='vote'&&stage!=='vote'&&d.revote?.length){
+      d.mainReview={stage,noms:d.noms};
+      d.noms=d.noms.map(n=>({...n,...(n.voters?{voters:[...n.voters]}:{})}));
+      d.stage='vote';
+      clearLastVote(d.noms);
+      return;
+    }
+    d.stage=round;d.tied=[];d.out=[];
+    if(round==='vote'){d.revote=[];delete d.revoteSeats}
     clearLastVote(votingList(d));
   },
-  votes(c){const n=votingList(curDay())?.find(x=>x.i===String(c.i));if(n)J.vote({...c,v:Math.min(10,Math.max(0,(+n.v||0)+(c.d>0?1:-1)))})},
-  day:startDay,
+  cancelVoteEdit(c){const d=archivedDay(c);if(d)delete d.correction},
+  votes(c){const d=voteTarget(c),n=d&&votingList(d)?.find(x=>x.i===String(c.i));if(n)J.vote({...c,v:Math.min(10,Math.max(0,(+n.v||0)+(c.d>0?1:-1)))})},
   timer(c){
     const t=S.timer,now=Date.now();
     if(c.op==='speak'){
       const v=String(c.v??'');
       if(!okSeat(v)||(c.ms!==undefined&&![SPEECH_MS,EXTRA_SPEECH_MS].includes(c.ms)))return;
-      if(v!=='')beginDayActivity(+v,true);
+      if(v!=='')beginDayActivity(+v);
       S.timer=newRunningTimer(c.ms??t.total,v,c.startedAt,now);
       S.timer.running=v!=='';
     }
@@ -403,11 +500,34 @@ const J={
     if(Object.hasOwn(SCORE_FIELDS,c.f)&&Number.isFinite(v)&&v>=0&&v<=SCORE_MAX)s[SCORE_FIELDS[c.f]]=scoreOf(v);
   }
 };
-const NO_SEAT=new Set(['night','day','timer','lh','notes','voteEnd','lift','voteReset','winner']); // команды, которые не относятся к одному игроку
-function voteOut(d,seats){
-  d.stage='done';d.out=[...seats];d.changed=seats.filter(i=>S.seats[+i]?.status==='alive');
-  d.nightAtEnd??=recordedNights();
+const NO_SEAT=new Set(['night','timer','lh','notes','voteEnd','lift','voteReset','cancelVoteEdit','winner']); // команды, которые не относятся к одному игроку
+function savePastVote(archive,d){
+  const changed=[];
+  for(const i of archive.changed||[]){
+    if(d.out.includes(i)){changed.push(i);continue}
+    if(S.seats[+i].status!=='voted')continue;
+    const other=days().find(day=>day!==archive&&day.out?.includes(i));
+    if(other){
+      other.changed??=[];
+      if(!other.changed.includes(i))other.changed.push(i);
+    }else S.seats[+i].status='alive';
+  }
+  for(const i of d.out){
+    if(!archive.out?.includes(i)&&S.seats[+i].status==='alive'){
+      S.seats[+i].status='voted';changed.push(i);
+    }
+  }
+  delete archive.revoteSeats;
+  Object.assign(archive,d,{changed});
+  delete archive.correction;
+  updateMorningOpener();
+}
+function voteOut(d,seats,archive){
+  d.stage='done';d.out=[...seats];
+  if(archive){savePastVote(archive,d);return}
+  d.changed=seats.filter(i=>S.seats[+i]?.status==='alive');
   d.changed.forEach(i=>{S.seats[+i].status='voted'});
+  if(days().length<1000)startDay();
 }
 // выполняет команду судьи и говорит, надо ли сохранить игру
 function judgeCommand(m){

@@ -17,7 +17,7 @@ header h1{flex:1;min-width:0;font-size:16px;font-weight:600;white-space:nowrap;o
 .wrap{max-width:760px;margin:0 auto;padding:0 8px}
 .judge-layout{display:grid;grid-template-areas:"timer" "nights" "reports" "game"}
 .judge-layout[hidden]{display:none}
-.judge-game{grid-area:game;min-width:0;container-type:inline-size}
+.judge-game{grid-area:game;min-width:0;container-type:inline-size;padding-top:6px}
 .judge-nights{grid-area:nights}
 .judge-reports{grid-area:reports}
 .judge-side{align-self:start;min-width:0;border-bottom:1px solid var(--line);padding:0 0 8px}
@@ -71,9 +71,11 @@ body.mode-scores .pr .scol{display:table-cell}
 .tech-steppers{display:grid;gap:1px}
 .lhtype{width:100%;min-height:42px;margin-bottom:6px;padding:0 10px;font:inherit;font-size:16px;color:inherit;background:#111116;border:1px solid #34343c;border-radius:6px}
 .pr .no{text-align:center;color:#77757d;font-size:14px}
-.pr tr.out .nick{color:#77757d;text-decoration:line-through}
+.pr tr.out .nick{color:#77757d}
+.pr tr.out .nick-name{text-decoration:line-through}
 .pr tr.speak td{background:#17142b}
 .pr tr.speak .nick{color:var(--speak)}
+.pr .day-opener{outline:2px solid var(--brass);outline-offset:-2px}
 .nomb{width:100%;min-height:40px;padding:0;font-size:18px;background:none;border:0;opacity:.35}
 .nomb.on{opacity:1;background:#2b2450;border-radius:6px;color:#fff}
 .lhb{width:100%;min-height:40px;padding:0 2px;font-size:12px;background:#111116;border:1px solid #2a2a32;border-radius:6px;color:#5c5a63;white-space:nowrap;overflow:hidden}
@@ -91,7 +93,6 @@ body.mode-scores .pr .scol{display:table-cell}
 .nick-line .nick{flex:1;width:auto}
 .speech-actions{display:flex;flex:none;gap:4px;white-space:nowrap}
 .speech-actions button{min-height:36px;padding:0 5px;font-size:12px}
-.speech-hint{margin:0 2px 8px}
 .fo{display:flex;align-items:center;justify-content:space-between}
 .fo button{width:38px;min-height:38px;padding:0;font-size:20px;background:none;border:0}
 .fo .p{color:#7fb36b}.fo .m{color:#b07a7a}
@@ -136,9 +137,17 @@ body.noroles .pr .rcell,body.noroles .res{display:none!important}
 .voters{display:grid;grid-template-columns:repeat(10,minmax(0,1fr));gap:2px;margin-bottom:4px}
 .voters button{min-height:38px;padding:0;font-size:14px}
 .voters-note{margin-top:4px}
-.saved-ballot{margin-top:8px;font-size:13px;color:#c9c6bf}
-.saved-ballot summary{cursor:pointer}
-.saved-ballot ul{padding-left:22px}
+.vote-history{border-top:1px solid var(--line);margin-top:10px;padding-top:8px}
+.vote-history h3{margin-bottom:4px;font-size:13px;color:#a09d95;font-weight:600}
+.archive-edit{margin:6px 0 8px;padding:8px;border:1px solid var(--line);border-radius:8px}
+.archive-edit>.vote-actions,.saved-ballot>.edit-archive{margin-top:7px}
+.saved-ballot{font-size:13px;color:#c9c6bf}
+.saved-ballot+.saved-ballot{border-top:1px solid var(--line)}
+.saved-ballot summary{cursor:pointer;padding:7px 0}
+.saved-ballot table{width:100%;border-collapse:collapse;margin:2px 0 8px}
+.saved-ballot th,.saved-ballot td{border-top:1px solid var(--line);padding:5px 4px;text-align:left;overflow-wrap:anywhere}
+.saved-ballot th{font-weight:600;color:#a09d95}
+.saved-ballot th:nth-child(2),.saved-ballot td:nth-child(2){width:64px;text-align:right;font-variant-numeric:tabular-nums}
 .vsum{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:13px;color:#a09d95;gap:8px}
 .vsum .go{background:#2b2450;border-color:#5a4fb0;color:#fff;font-weight:600}
 .vote-actions,.vote-rounds{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
@@ -149,7 +158,6 @@ body.noroles .pr .rcell,body.noroles .res{display:none!important}
 .lift .up{background:#e64545;border-color:#e64545;color:#fff;font-weight:600}
 .lift .stay{background:#7cb518;border-color:#7cb518;color:#10200a;font-weight:600}
 .outres{font-size:15px;margin-bottom:6px}
-.past{margin-top:8px;font-size:13px;color:#8a877f}
 .muted{color:#8a877f;font-size:13px}
 .win3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .win3 button{min-height:44px;font-weight:600}
@@ -200,7 +208,7 @@ textarea{width:100%;min-height:96px;padding:8px;resize:vertical}
 <div class="wrap judge-layout" id="app" hidden>
   <section class="timer" aria-label="Таймер">
     <div class="clock" id="clock" aria-live="off">1:00</div>
-    <div class="who" id="who">Выберите 60 или 30 секунд рядом с игроком</div>
+    <div class="who" id="who"></div>
     <div class="tbtns">
       <button type="button" id="tPlay" aria-label="Запустить таймер">▶</button>
       <button type="button" id="tReset" aria-label="Перезапустить таймер">⟳</button>
@@ -229,16 +237,20 @@ textarea{width:100%;min-height:96px;padding:8px;resize:vertical}
     </table>
   </details>
   <main class="judge-game">
-  <h2>Игроки</h2>
-  <p class="muted speech-hint">Доп. время добавляет 30 секунд и два фола. Доступно говорящему с 0 или 1 фолом.</p>
   <div class="modes" role="group" aria-label="Колонки таблицы"><button type="button" data-mode="game">Игра</button><button type="button" data-mode="scores">Баллы</button></div>
   <datalist id="dl-b"></datalist><datalist id="dl-p"></datalist>
-  <table class="pr">
+  <table class="pr" aria-label="Игроки">
     <thead><tr><th class="c-nom gcol" title="Выставить на голосование">👍</th><th class="c-n">№</th><th>Игрок</th><th class="c-f gcol">Фолы</th><th class="c-l gcol" title="Лучший ход можно записать для двух игроков">ЛХ</th><th class="c-r gcol rcell">Роль</th>
       <th class="c-s scol" title="Дополнительные баллы">+</th><th class="c-s scol" title="Минус">−</th><th class="c-tech scol" title="Технические фолы и штраф">Тех −</th></tr></thead>
     <tbody id="rows"></tbody></table>
   <h2 id="dayTitle">Голосование</h2>
-  <div class="card" id="vote"></div>
+  <div class="card">
+    <div id="vote"></div>
+    <section class="vote-history" aria-labelledby="voteHistoryTitle">
+      <h3 id="voteHistoryTitle">Предыдущие голосования</h3>
+      <div id="voteHistory"></div>
+    </section>
+  </div>
   <h2>Заметки</h2>
   <textarea id="notes" placeholder="Заметки судьи к игре" aria-label="Заметки судьи"></textarea>
   <h2>Результат игры</h2>
@@ -363,8 +375,9 @@ let notesT=null;
 $('notes').oninput=()=>{clearTimeout(notesT);notesT=setTimeout(()=>send({a:'notes',v:$('notes').value}),500)};
 
 function drawSpeaker(sp){
-  $('who').innerHTML='';
-  $('who').append(sp===''?(hasCountdown()?'Общий отсчёт':'Выберите 60 или 30 секунд рядом с игроком'):el('span',{},'Говорит',el('b',{textContent:(+sp+1)+' · '+nickOf(+sp)})));
+  const who=$('who');
+  if(sp!=='')who.replaceChildren(el('span',{},'Говорит',el('b',{textContent:(+sp+1)+' · '+nickOf(+sp)})));
+  else who.textContent=hasCountdown()?'Общий отсчёт':'';
 }
 function drawTimer(){
   const {running}=shownTimer();
@@ -405,12 +418,16 @@ function updateFouls({seat,count}){
 function drawRows(){
   const tb=$('rows');tb.textContent='';
   const today=last.days[last.days.length-1],voting=today.stage||'vote';
-  const noms=voting==='vote'?today.noms.map(n=>n.i):[],hide=$('hideRoles').checked;
+  const candidates=voting==='vote'?today.noms:voting==='revote'?today.revote:[];
+  const noms=voting==='lift'?today.tied:candidates.map(n=>n.i),hide=$('hideRoles').checked;
   last.seats.forEach((s,i)=>{
     const out=s.st!=='alive',isOpen=open===i;
-    const tr=el('tr',{className:'player'+(out?' out':'')});
-    const nb=btn('👍',{a:'nom',i},{cls:'nomb',on:noms.includes(String(i)),label:'Выставить игрока '+(i+1),disabled:out||(voting!=='vote'&&!last.nextDayReady)});
-    const nick=el('button',{type:'button',className:'nick',textContent:nickOf(i)});
+    const opener=last.opener===i;
+    const tr=el('tr',{className:'player'+(out?' out':'')+(opener?' day-opener':'')});
+    const nominated=noms.includes(String(i));
+    const nominationLabel=nominated&&voting!=='vote'?'Кандидат № '+(i+1):'Выставить игрока '+(i+1);
+    const nb=btn('👍',{a:'nom',i},{cls:'nomb',on:nominated,label:nominationLabel,disabled:out||voting!=='vote'});
+    const nick=el('button',{type:'button',className:'nick'},el('span',{className:'nick-name',textContent:nickOf(i)}));
     nick.setAttribute('aria-expanded',isOpen);
     if(out)nick.append(el('small',{textContent:STATE[s.st](s.kn)}));
     nick.onclick=()=>{open=isOpen?null:i;draw()};
@@ -418,7 +435,9 @@ function drawRows(){
     const role=el('select',{disabled:!panelOn,className:'rc-'+(s.role||'none')});role.setAttribute('aria-label','Роль игрока '+(i+1));
     ROLES.forEach(([v,t])=>role.add(new Option(t,v)));role.value=s.role||'';
     role.onchange=()=>send({a:'role',i,v:role.value});
-    tr.append(el('td',{className:'gcol nom-cell'},nb),el('td',{className:'no',textContent:i+1}),
+    const number=el('td',{className:'no',textContent:i+1});
+    if(opener)number.title='Открывает стол';
+    tr.append(el('td',{className:'gcol nom-cell'},nb),number,
       el('td',{className:'name-cell'},el('div',{className:'nick-line'},nick,speechButtons(i))),
       el('td',{className:'gcol foul-cell'},el('div',{className:'fo'},btn('+',{a:'foul',i,d:1},{cls:'p',label:'Фол',disabled:s.fouls>=4}),fo,btn('−',{a:'foul',i,d:-1},{cls:'m',label:'Снять фол',disabled:s.fouls<1}))),
       el('td',{className:'gcol lh-cell'},lhCell(i)),
@@ -516,11 +535,11 @@ function parsePlayerNumbers(text){
 }
 const who=list=>list.map(i=>(+i+1)+' · '+nickOf(+i)).join(', ');
 const nums=list=>list.map(i=>+i+1).join(', ');
-function voterButtons(n){
+function voterButtons(n,eligibleVoters,target){
   const grid=el('div',{className:'voters'});
-  for(const voter of last.eligibleVoters||[]){
+  for(const voter of eligibleVoters){
     const selected=n.voters?.includes(voter)||false;
-    const b=btn(String(+voter+1),{a:'voteVoter',i:+n.i,voter},
+    const b=btn(String(+voter+1),{a:'voteVoter',i:+n.i,voter,...target},
       {on:selected,label:`Голос игрока ${who([voter])} за игрока ${who([n.i])}`});
     b.dataset.voter=voter;
     b.setAttribute('aria-pressed',String(selected));
@@ -528,7 +547,7 @@ function voterButtons(n){
   }
   return grid;
 }
-function candidate(n,canDelete,auto,named){
+function candidate(n,canDelete,auto,named,eligibleVoters,target){
   const v=n.v===''?'':+n.v;
   const head=el('div',{className:'chead'});
   if(canDelete)head.append(btn('🗑',{a:'nom',i:+n.i},{cls:'del',label:'Снять с голосования игрока '+(+n.i+1)}));
@@ -542,32 +561,71 @@ function candidate(n,canDelete,auto,named){
     return row;
   }
   if(named){
-    const row=el('div',{className:'cand'},head,voterButtons(n),
-      btn('0 голосов',{a:'voteVoter',i:+n.i,voter:''},{on:v===0,label:'Ноль голосов за '+(+n.i+1)}));
+    const row=el('div',{className:'cand'},head,voterButtons(n,eligibleVoters,target),
+      btn('0 голосов',{a:'voteVoter',i:+n.i,voter:'',...target},{on:v===0,label:'Ноль голосов за '+(+n.i+1)}));
     if(v>0&&!n.voters)row.append(el('p',{className:'muted voters-note',textContent:'Введено числом. Выбор игроков заменит это число.'}));
     return row;
   }
   const grid=el('div',{className:'v11'});
-  for(let k=0;k<=10;k++)grid.append(btn(String(k),{a:'vote',i:+n.i,v:k},{on:v===k,label:'Голосов за '+(+n.i+1)+': '+k}));
+  for(let k=0;k<=10;k++)grid.append(btn(String(k),{a:'vote',i:+n.i,v:k,...target},{on:v===k,label:'Голосов за '+(+n.i+1)+': '+k}));
   return el('div',{className:'cand'},head,grid);
 }
-function savedBallot(title,list){
-  const rows=list.map(n=>el('li',{textContent:who([n.i])+' — '+n.v+(n.voters?.length?' (№ '+nums(n.voters)+')':'')}));
-  return el('details',{className:'saved-ballot'},el('summary',{textContent:title}),el('ul',{},...rows));
+const voteOutcome=(out,players=who)=>out.length?((out.length===1?'Ушёл: ':'Ушли: ')+players(out)):'Никто не ушёл';
+function savedBallot(key,title,list,named,expanded){
+  const head=el('tr',{},...['Кандидат','Голосов'].map(textContent=>el('th',{scope:'col',textContent})));
+  if(named)head.append(el('th',{scope:'col',textContent:'Кто голосовал'}));
+  const rows=list.map(n=>{
+    const row=el('tr',{},el('td',{textContent:who([n.i])}),el('td',{textContent:n.v===''?'—':n.v}));
+    if(named){
+      const voters=n.voters?.length?nums(n.voters):n.v>0?'Введено числом':'—';
+      row.append(el('td',{textContent:voters}));
+    }
+    return row;
+  });
+  const details=el('details',{className:'saved-ballot',open:expanded.has(key)},
+    el('summary',{textContent:title}),el('table',{},el('thead',{},head),el('tbody',{},...rows)));
+  details.dataset.round=key;
+  return details;
 }
-function editVote(round,stage){
-  if(round!==stage){send({a:'voteReset',round});return}
-  const field=$('vote').querySelector('.voters button:not(:disabled),.v11 button:not(:disabled)');
-  (field||$('rows').querySelector('.nomb:not(:disabled)'))?.focus();
+function drawVoteHistory(named){
+  const box=$('voteHistory');
+  const expanded=new Set([...box.querySelectorAll('details[open]')].map(d=>d.dataset.round));
+  box.replaceChildren();
+  for(let i=last.days.length-1;i>=0;i--){
+    const day=last.days[i],current=i===last.days.length-1,stage=day.stage||'vote';
+    const rounds=[];
+    if(day.revote.length&&(!current||(stage!=='revote'&&day.reviewStage!=='revote')))rounds.push(['revote','Переголосование',day.revote]);
+    if(day.noms.length&&(!current||stage!=='vote'))rounds.push(['vote','Основное голосование',day.noms]);
+    rounds.forEach(([round,label,list],index)=>{
+      let title=`День ${i+1} · ${label}`;
+      if(stage==='done'&&index===0)title+=' · '+voteOutcome(day.out,nums);
+      const entry=savedBallot(`${i}-${round}`,title,list,named,expanded);
+      if(!current&&!day.correction)entry.append(btn('Изменить',{a:'voteReset',day:i,round},{cls:'edit-archive',label:'Изменить · '+title}));
+      box.append(entry);
+    });
+    if(day.correction){
+      const editor=el('section',{className:'archive-edit'},el('h3',{textContent:`День ${i+1} · исправление голосования`}));
+      editor.dataset.day=i;
+      const draft=day.correction,hasVoters=Array.isArray(draft.eligibleVoters);
+      if(named&&!hasVoters&&draft.stage!=='lift')editor.append(el('p',{className:'muted voters-note',textContent:'Полный список голосовавших в этом раунде не сохранился. Можно исправить количество голосов.'}));
+      renderVote(editor,draft,named&&hasVoters,{day:i},draft.eligibleVoters,draft.voters);
+      editor.append(el('div',{className:'vote-actions'},btn('Отменить правки',{a:'cancelVoteEdit',day:i},{cls:'cancel-archive'})));
+      box.append(editor);
+    }
+  }
+  if(!box.children.length)box.append(el('p',{className:'muted',textContent:'Голосований пока нет'}));
 }
-function drawVote(){
-  const box=$('vote');box.textContent='';
-  const k=last.days.length,day=last.days[k-1],st=day.stage||'vote',named=$('namedVotes').checked;
-  $('dayTitle').textContent='Голосование · день '+k;
-  const chooseRound=!!day.revote.length;
-  const rounds=el('div',{className:'vote-rounds',hidden:true,id:'voteRounds'});
+function editVote(box,round,stage,target){
+  if(round!==stage){send({a:'voteReset',round,...target});return}
+  const field=box.querySelector('.voters button:not(:disabled),.v11 button:not(:disabled)');
+  (field||(target.day===undefined?$('rows').querySelector('.nomb:not(:disabled)'):null))?.focus();
+}
+function renderVote(box,day,named,target,eligibleVoters,voterTotal){
+  const st=day.stage||'vote',current=target.day===undefined;
+  const chooseRound=st!=='vote'&&!!day.revote.length;
+  const rounds=el('div',{className:'vote-rounds',hidden:true,id:current?'voteRounds':'voteRounds-'+target.day});
   const edit=btn('Изменить',()=>{
-    if(!chooseRound){editVote('vote',st);return}
+    if(!chooseRound){editVote(box,'vote',st,target);return}
     rounds.hidden=!rounds.hidden;
     edit.setAttribute('aria-expanded',String(!rounds.hidden));
     if(!rounds.hidden)rounds.firstElementChild.focus();
@@ -578,7 +636,7 @@ function drawVote(){
     const selectRound=round=>()=>{
       rounds.hidden=true;
       edit.setAttribute('aria-expanded','false');
-      editVote(round,st);
+      editVote(box,round,st,target);
     };
     rounds.append(btn('Основное голосование',selectRound('vote')),
       btn('Переголосование',selectRound('revote')));
@@ -587,26 +645,29 @@ function drawVote(){
     const list=st==='vote'?day.noms:day.revote;
     if(st==='revote')box.append(el('div',{className:'stage',textContent:'Поровну голосов — переголосование между '+nums(list.map(n=>n.i))}));
     if(!list.length)box.append(el('div',{className:'muted',textContent:'Никто не выставлен. Нажмите 👍 у игрока.'}));
-    list.forEach((n,i)=>box.append(candidate(n,st==='vote',i===list.length-1,named)));
+    list.forEach((n,i)=>box.append(candidate(n,current&&st==='vote',i===list.length-1,named,eligibleVoters,target)));
     const total=list.reduce((a,n)=>a+(+n.v||0),0);
-    const votes=last.voters===undefined?'Голосов: '+total:`Голосов: ${total} / ${last.voters}`;
+    const votes=voterTotal===undefined?'Голосов: '+total:`Голосов: ${total} / ${voterTotal}`;
     const actions=el('div',{className:'vote-actions'},edit);
-    if(list.length)actions.append(btn('Сохранить голосование',{a:'voteEnd'},{cls:'go',disabled:list.at(-1).v===''}));
+    if(list.length||day.mainUnchanged)actions.append(btn('Сохранить голосование',{a:'voteEnd',...target},{cls:'go',disabled:!day.mainUnchanged&&list.at(-1).v===''}));
     box.append(el('div',{className:'vsum'},el('span',{textContent:votes}),actions));
   }else if(st==='lift'){
     box.append(el('div',{className:'stage',textContent:'После переголосования снова поровну'}),
       el('div',{className:'liftq',textContent:'Поднять всех: '+who(day.tied)+'?'}),
-      el('div',{className:'lift'},btn('Подняли',{a:'lift',v:'up'},{cls:'up'}),btn('Оставили',{a:'lift',v:'stay'},{cls:'stay'})));
+      el('div',{className:'lift'},btn('Подняли',{a:'lift',v:'up',...target},{cls:'up'}),btn('Оставили',{a:'lift',v:'stay',...target},{cls:'stay'})));
     box.append(el('div',{className:'vsum'},edit));
   }else{
-    box.append(el('div',{className:'outres',textContent:day.out.length?(day.out.length>1?'Стол покидают: ':'Стол покидает: ')+who(day.out):'Оставили — никто не покинул стол'}));
+    box.append(el('div',{className:'outres',textContent:voteOutcome(day.out)}));
     box.append(el('div',{className:'vsum'},edit));
   }
   if(chooseRound)box.append(rounds);
-  if(named&&st!=='vote'&&day.noms.length)box.append(savedBallot('Голоса основного раунда',day.noms));
-  if(named&&(st==='lift'||st==='done')&&day.revote.length)box.append(savedBallot('Голоса переголосования',day.revote));
-  const past=last.days.slice(0,-1).map((d,j)=>'День '+(j+1)+': '+(!d.noms.length?'без выставлений':d.stage==='done'?(d.out.length?'ушли '+nums(d.out):'оставили'):'выставлены '+nums(d.noms.map(n=>n.i))));
-  if(past.length)box.append(el('div',{className:'past',textContent:past.join(' · ')}));
+}
+function drawVote(){
+  const box=$('vote');box.textContent='';
+  const k=last.days.length,named=$('namedVotes').checked;
+  $('dayTitle').textContent='Голосование · день '+k;
+  renderVote(box,last.days[k-1],named,{},last.eligibleVoters||[],last.voters);
+  drawVoteHistory(named);
 }
 // Игрок без роли считается мирным.
 function checkResult(seat){if(!seat)return ['',''];return ['mafia','don'].includes(seat.role)?['black','чёрный']:['red','красный']}
