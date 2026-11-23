@@ -1,0 +1,22 @@
+:root {
+  --app-bg: #0e1015;
+  --app-bar: #151822;
+  --app-surface: #171b24;
+  --app-raised: #222838;
+  --app-stripe: #1b202c;
+  --app-line: #30384a;
+  --app-border-strong: #4a5771;
+  --app-text: #edf0f7;
+  --app-muted: #a4afc3;
+  --app-blue: #bacaff;
+  --app-blue-fill: #b6c5ff;
+  --app-blue-ink: #141d35;
+  --app-blue-soft: #252e49;
+  --app-red: #ffafb8;
+  --app-red-soft: #40252f;
+  --app-green: #a5d8b4;
+  --app-green-soft: #1e332b;
+  --app-gold: #e8cc90;
+  --app-font: Inter, "Segoe UI", system-ui, sans-serif;
+  --app-number: "Cascadia Mono", Consolas, monospace;
+}

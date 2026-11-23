@@ -81,12 +81,21 @@ function results(value, game) {
   });
 }
 
+const accent = value => typeof value === 'string' && /^#[a-f0-9]{6}$/i.test(value);
+const showFouls = value => typeof value === 'boolean';
+const ui = value => fields(value, {
+  th: x => number(x, 120, 400), ts: x => number(x, .6, 1.8), gap: x => number(x, 0, 40),
+  mb: x => number(x, 0, 200), side: x => number(x, 0, 200), ns: x => number(x, .5, 1.6),
+  is: x => number(x, .5, 1.6), ot: x => number(x, 0, 100),
+});
+const validDesign = value => fields(value, { title: v => text(v, 120), accent, showFouls, ui });
+
 function validState(state) {
   if (!fields(state, {
     // Поля прежних снимков игры.
     v: optional(integer), photoVer: optional(integer),
-    revision: integer, title: text, game: integer, accent: v => typeof v === 'string' && /^#[a-f0-9]{6}$/i.test(v),
-    scene: v => scenes.includes(v), showFouls: v => typeof v === 'boolean',
+    revision: integer, tournamentRosterRevision: optional(integer), tournamentSeatingRevision: optional(integer), title: text, game: integer, accent,
+    scene: v => scenes.includes(v), showFouls,
     judge: v => fields(v, { room, hud: room }) && v.room !== v.hud,
     roster: v => list(v, 5000, r => fields(r, { id, nick: n => text(n, 256), mu: optional(n => text(n, 256)) })),
     seats: v => list(v, 10, s => fields(s, {
@@ -109,11 +118,7 @@ function validState(state) {
     })),
     deathReports: optional(v => list(v, 10, deathReport) && new Set(v.map(row => row.i)).size === v.length),
     notes: text, winner: v => winners.includes(v), mu: tournament, showPage: optional(v => integer(v, 200)),
-    ui: v => fields(v, {
-      th: x => number(x, 120, 400), ts: x => number(x, .6, 1.8), gap: x => number(x, 0, 40),
-      mb: x => number(x, 0, 200), side: x => number(x, 0, 200), ns: x => number(x, .5, 1.6),
-      is: x => number(x, .5, 1.6), ot: x => number(x, 0, 100),
-    }),
+    ui,
     show: optional(v => fields(v, { game: optional(g => results(g, true)), results: optional(r => results(r, false)) })),
   })) return false;
   const players = new Set(state.roster.map(player => player.id));
@@ -153,4 +158,4 @@ function applyEdits(state, ops) {
   return null;
 }
 
-module.exports = { validState, applyEdits, room, id };
+module.exports = { validState, validDesign, applyEdits, room, id };

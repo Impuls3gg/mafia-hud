@@ -123,7 +123,7 @@ test('пульт: вывести таблицу по id турнира, обно
   t.after(() => { delete process.env.MU_ORIGIN; });
 
   const server = await startServer(t, 'pw');
-  const page = await openPage(t, `${server.http}/panel`);
+  const page = await openPage(t, `${server.gameUrl}/panel`);
   await until(() => page.run("!!document.getElementById('login')"), 20000);
   await page.run("document.getElementById('lKey').value='pw';document.getElementById('login').requestSubmit()");
   assert.ok(await until(() => page.run("!!document.getElementById('shGameUrl')"), 20000), 'пульт не открылся');

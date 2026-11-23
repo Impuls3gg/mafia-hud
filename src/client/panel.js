@@ -2,10 +2,12 @@
 const PANEL_TABS=[['game','Игра'],['players','Игроки'],['judge','Судья'],['design','Дизайн'],['obs','OBS']];
 const tabHref = key => '#' + key;
 const tabFromHash=()=>{const m=location.hash.match(/(?:^#|\/)(game|players|judge|design|obs)$/);return m?m[1]:'game'};
-function startPanel(){
+function startPanel({tournamentId}){
   document.body.className='panel';
   document.body.innerHTML=`
-  <header class="p-head"><h1>HUD для мафии · пульт</h1>
+  <header class="p-head"><h1>Пульт оператора</h1>
+    <a href="/tournaments/${tournamentId}/operator?game=${GAME_ID}" target="_top">Пульт турнира</a>
+    <span id="pGameTitle"></span>
     <nav class="p-tabs" aria-label="Страницы пульта">${PANEL_TABS.map(([k,t])=>`<a href="${tabHref(k)}" data-tab="${k}">${t}</a>`).join('')}</nav>
     <span class="p-net conn"><span class="dot" id="hDot"></span><span id="hSt"></span></span>
   </header>
@@ -28,9 +30,8 @@ function startPanel(){
       </div>
       <div class="box"><h2>Рассадка на игру</h2>
         <div class="scroll"><table class="pt"><thead><tr><th>№</th><th></th><th>Игрок</th><th>Роль</th><th>Статус</th><th>Фолы</th></tr></thead><tbody id="rows"></tbody></table></div>
-        <div class="bar muted" style="margin-top:8px">Выберите игрока на каждое место. Если он уже сидит на другом месте, игроки поменяются местами. Убитым игрок становится автоматически, когда вы указываете его в отстреле.</div>
-        <div class="bar"><button data-a="clearSeats">Освободить все места</button></div>
-        <div class="bar"><label><input type="checkbox" id="fFouls">Показывать фолы на плашках</label><span class="muted">Фол ставится кнопкой «+» в колонке «Фолы». Четвёртый фол удаляет игрока.</span></div>
+        <div class="bar"><a href="/tournaments/${tournamentId}/admin?game=${GAME_ID}" target="_top">Настроить рассадку в админке</a></div>
+        <div class="bar"><label><input type="checkbox" id="fFouls">Показывать фолы на плашках</label></div>
       </div>
     </div>
     <div>
@@ -39,8 +40,10 @@ function startPanel(){
         <div class="bar" style="margin-top:8px"><button data-a="addNight">Добавить ночь</button><span class="muted">Результаты проверок определяются по ролям. На экране красный и чёрный показываются цветом номера, найденный шерифом дон — фиолетовым, у дона жёлтый номер означает, что он нашёл шерифа.</span></div>
       </div>
       <div class="box"><h2>Игра</h2>
-        <div class="bar">Игра <button data-a="gameMinus" aria-label="Предыдущая игра">−</button><input id="fGame" type="number" min="0" style="width:64px" aria-label="Номер игры"><button data-a="gamePlus" aria-label="Следующая игра">+</button><span class="muted">0 скрывает надпись.</span></div>
-        <div class="bar"><button data-a="newGame" class="warn">Новая игра</button><span class="muted">Сбрасывает роли, статусы, фолы и ночи и увеличивает номер игры. Рассадка остаётся.</span></div>
+        <div class="bar">Игра <button data-a="gameMinus" aria-label="Предыдущая игра">−</button>
+          <input id="fGame" type="number" min="0" style="width:64px" aria-label="Номер игры">
+          <button data-a="gamePlus" aria-label="Следующая игра">+</button><span class="muted">0 скрывает надпись.</span></div>
+        <div class="bar"><button data-a="resetGame" class="warn">Сбросить протокол</button><span class="muted">Роли, статусы, фолы, ночи и результат этой игры будут сброшены. Рассадка сохранится.</span></div>
       </div>
     </div>
   </section>
@@ -48,7 +51,7 @@ function startPanel(){
     <div>
       <div class="box"><h2>MafiaUniverse</h2>
         <div>
-          <div class="bar"><a class="mu-bm" id="muBm" href="#" title="Перетащите на панель закладок">Отправить в HUD</a><span class="muted">Рассадка: перетащите кнопку на панель закладок браузера. Потом на MafiaUniverse войдите, откройте раздел «Игры» турнира и нажмите эту закладку.</span></div>
+          <div class="bar"><a class="mu-bm" id="muBm" href="#" title="Перетащите на панель закладок">Отправить в HUD</a><span class="muted">Загрузка списка игр: откройте раздел «Игры» турнира на MafiaUniverse и нажмите закладку. Рассадку выбранной игры можно открыть в админке.</span></div>
           <div class="bar"><a class="mu-bm" id="muFillBm" href="#" title="Перетащите на панель закладок">Заполнить протокол</a><span class="muted">Экспорт игры: откройте на MafiaUniverse редактирование игры и нажмите эту закладку. Заполнятся роли, фолы, первый убиенный с лучшим ходом, допы и минусы, победитель и заметка с голосованиями. Сохраните на сайте сами.</span></div>
           <div id="mu" style="margin-top:8px"></div>
         </div>
@@ -56,9 +59,10 @@ function startPanel(){
       </div>
     </div>
     <div>
-      <div class="box"><h2>Игроки турнира</h2>
+      <div class="box"><h2>Игроки игры</h2>
+        <a href="/tournaments/${tournamentId}/participants" target="_top">Участники и фотографии турнира</a>
         <div class="rl" id="roster"></div>
-        <div class="bar" style="margin-top:8px"><button data-a="addOne">Добавить игрока</button><button data-a="delAll" class="warn">Удалить всех игроков</button></div>
+        <div class="bar" style="margin-top:8px"><button data-a="addOne">Добавить игрока</button></div>
         <div style="margin-top:10px">
           <label class="muted" for="bulk">Добавить списком, по одному нику в строке:</label>
           <textarea id="bulk" style="margin-top:4px"></textarea>
@@ -72,7 +76,7 @@ function startPanel(){
       <div class="box"><h2>Судья с телефона</h2>
 
         <div class="muted" id="jSt" style="margin-top:6px">Не подключено</div>
-        <div class="bar" style="margin-top:8px"><input id="jLink" style="flex:1" readonly aria-label="Ссылка для судьи"><button data-a="jCopy">Копировать</button><button data-a="jNew">Новая ссылка</button></div>
+        <div class="bar" style="margin-top:8px"><input id="jLink" style="flex:1" readonly aria-label="Ссылка для судьи"><button data-a="jCopy">Копировать</button><button data-a="jNew">Новая ссылка</button><a id="jOpen">Открыть судью</a></div>
         <div class="muted" style="margin-top:6px">Отправьте ссылку судье: по ней он выдаёт роли, ставит фолы и отмечает ночные действия с телефона. Ссылка даёт управление игрой, поэтому не публикуйте её.</div>
 
       </div>
@@ -81,7 +85,8 @@ function startPanel(){
   </section>
   <section class="page p-grid" data-page="design" aria-label="Дизайн">
     <div>
-      <div class="box"><h2>Название турнира</h2>
+      <div class="box"><h2>Оформление игры</h2>
+        <a href="/tournaments/${tournamentId}/design" target="_top">Общий дизайн OBS для турнира</a>
         <input id="fTitle" style="width:100%" placeholder="Например: Кубок города, 2 тур" aria-label="Название турнира">
         <div class="ac-row"><span>Акцентный цвет</span><input type="color" id="fAccent" aria-label="Акцентный цвет турнира">
           <span id="swatches" class="bar" style="gap:4px"></span><button data-a="accentReset">Сбросить</button></div>
@@ -123,7 +128,7 @@ function startPanel(){
   S.seats.forEach((_,i)=>{
     const tr=document.createElement('tr');tr.dataset.i=i;
     tr.innerHTML=`<td class="n">${i+1}</td><td><div class="mini"></div></td>
-      <td><select class="who" data-f="pid" aria-label="Игрок на месте ${i+1}"></select></td>
+      <td><select class="who" data-f="pid" aria-label="Игрок на месте ${i+1}" disabled></select></td>
       <td class="rc"><select data-f="role" aria-label="Роль, место ${i+1}"><option value="">Нет роли</option><option value="civ">Мирный</option><option value="sheriff">Шериф</option><option value="mafia">Мафия</option><option value="don">Дон</option></select></td>
       <td class="stc"><select data-f="status" aria-label="Статус, место ${i+1}"><option value="alive">В игре</option><option value="voted">Заголосован</option><option value="removed">Удалён</option></select><span class="killed"></span></td>
       <td class="fo"><button data-a="foulMinus" data-i="${i}" aria-label="Снять фол, место ${i+1}">−</button><span class="fn"></span><button data-a="foulPlus" data-i="${i}" aria-label="Фол, место ${i+1}">+</button></td>`;
@@ -137,18 +142,6 @@ function startPanel(){
     }
     Net.send({ kind: 'photo', pid: id, data: data || null });
   }
-  function processImage(file){
-    return new Promise((res,rej)=>{
-      const fr=new FileReader();
-      fr.onload=()=>{const im=new Image();
-        im.onload=()=>{const W=300,H=400,c=document.createElement('canvas');c.width=W;c.height=H;
-          const x=c.getContext('2d'),s=Math.max(W/im.width,H/im.height),w=im.width*s,h=im.height*s;
-          x.fillStyle='#26262c';x.fillRect(0,0,W,H);x.drawImage(im,(W-w)/2,(H-h)*0.25,w,h);
-          res(c.toDataURL('image/jpeg',0.85))};
-        im.onerror=()=>rej(new Error('Не удалось прочитать изображение'));im.src=fr.result};
-      fr.onerror=rej;fr.readAsDataURL(file);
-    });
-  }
   const seatOf=id=>S.seats.findIndex(s=>s.pid===id);
 
   const A={
@@ -158,11 +151,16 @@ function startPanel(){
     uiReset(){S.ui=Object.assign({},UI_DEF)},
     addNight(){S.nights.push({shot:'',check:'',don:''})},
     delNight(el){S.nights.splice(+el.dataset.k,1);if(!S.nights.length)S.nights.push({shot:'',check:'',don:''})},
-    newGame(){if(!confirm('Начать новую игру? Роли, статусы, фолы и ночи сбросятся, рассадка останется.'))return;
-      resetGame();S.game=(+S.game||0)+1},
+    resetGame(){if(confirm('Сбросить протокол этой игры? Рассадка сохранится.'))resetGame()},
     gamePlus(){S.game=(+S.game||0)+1},
     gameMinus(){S.game=Math.max(0,(+S.game||0)-1)},
-    muSeat(el){const g=S.mu&&S.mu.games.find(x=>x.key===el.dataset.k);if(g)muSeat(g)},
+    muSelect(el){const g=S.mu&&S.mu.games.find(x=>x.key===el.dataset.k);if(g)selectMuGame(g)},
+    muAdmin(el){
+      const game=S.mu?.games.find(g=>g.key===el.dataset.k);
+      if(!game?.ready)return;
+      const seats=new URLSearchParams({seating:JSON.stringify(game.seats)});
+      window.top.location.href='/tournaments/'+tournamentId+'/admin?game='+GAME_ID+'#'+seats;
+    },
     muNext(){muStep(1)},
     muPrev(){muStep(-1)},
     muForget(){if(confirm('Забыть турнир MafiaUniverse? Рассадка на местах останется.'))S.mu=null},
@@ -181,21 +179,15 @@ function startPanel(){
     pgNext(){const n=((S.show||{}).results||{rows:[]}).rows.length;S.showPage=Math.min(Math.max(0,Math.ceil(n/RES_PAGE)-1),(+S.showPage||0)+1)},
     foulPlus(el){const s=S.seats[+el.dataset.i];s.fouls=Math.min(4,(+s.fouls||0)+1)},
     foulMinus(el){const s=S.seats[+el.dataset.i];s.fouls=Math.max(0,(+s.fouls||0)-1)},
-    clearSeats(){if(!confirm('Освободить все 10 мест?'))return;S.seats.forEach(s=>s.pid='')},
     addOne(){const id=newId();S.roster.push({id,nick:'Новый игрок'});pendingFocus=id},
     addBulk(){const lines=$('#bulk').value.split('\n').map(x=>x.trim()).filter(Boolean);
       lines.forEach(n=>S.roster.push({id:newId(),nick:n}));$('#bulk').value=''},
     delPerson(el){const id=el.dataset.id,p=person(id);if(!p)return;
-      if(!confirm(`Удалить игрока «${p.nick}» из списка турнира?`))return;
+      if(seatOf(id)>=0)return;
+      if(!confirm(`Удалить игрока «${p.nick}» из этой игры?`))return;
       removePlayer(S,id);
       syncGame({kind:'deletePlayer',pid:id})},
-    delPhoto(el){setPhoto(el.dataset.id,null)},
-    // список турнира целиком: места освобождаются, фото удаляются; турнир MafiaUniverse остаётся, и импорт заведёт игроков заново
-    delAll(){
-      if(!S.roster.length)return;
-      if(!confirm(`Удалить всех игроков турнира (${S.roster.length})? Места освободятся, фото игроков удалятся.`))return;
-      S.roster=[];S.seats.forEach(s=>{s.pid=''});
-    }
+    delPhoto(el){setPhoto(el.dataset.id,null)}
   };
   let pendingFocus=null;
   if(S.nights.some(n=>n.shot==='miss')){S.nights.forEach(n=>{if(n.shot==='miss')n.shot=''});commit()}
@@ -205,7 +197,6 @@ function startPanel(){
   });
   tb.addEventListener('change',e=>{
     const i=+e.target.closest('tr').dataset.i,f=e.target.dataset.f,v=e.target.value;
-    if(f==='pid'){const j=v?seatOf(v):-1;if(j>=0&&j!==i)S.seats[j].pid=S.seats[i].pid;S.seats[i].pid=v}
     if(f==='role')S.seats[i].role=v;
     if(f==='status')S.seats[i].status=v;
     commit();
@@ -234,7 +225,6 @@ function startPanel(){
   $('#fTitle').addEventListener('input',e=>{S.title=e.target.value;commit()});
   $('#swatches').innerHTML=ACCENTS.map(c=>`<button class="ac-sw" data-a="accent" data-c="${c}" style="background:${c}" title="${c}" aria-label="Цвет ${c}"></button>`).join('');
   $('#fAccent').addEventListener('input',e=>{S.accent=e.target.value;commit()});
-
   $('#fGame').addEventListener('input',e=>{const n=parseInt(e.target.value,10);S.game=isNaN(n)||n<0?0:n;commit()});
 
   /* ---- рассадка из MafiaUniverse: закладка присылает все игры турнира, пульт сажает игроков выбранного стола ---- */
@@ -245,44 +235,23 @@ function startPanel(){
   }
   const muList=()=>S.mu?S.mu.games.filter(g=>g.table===S.mu.table):[];
   const muTables=()=>S.mu?[...new Set(S.mu.games.map(g=>g.table))].sort((a,b)=>a-b):[];
-  const inProgress=()=>S.seats.some(s=>s.role||s.status!=='alive'||+s.fouls||+s.bonus||+s.pen||techPenalty(s))||S.nights.some(n=>n.shot||n.check||n.don)
-    ||days().some(d=>d.noms.length)||(Array.isArray(S.lh)&&S.lh.some(Boolean))||S.deathReports?.some(report=>!report.dismissedNight)||!!(S.notes||'').trim();
-  // ник на MafiaUniverse хранится отдельно (r.mu), поэтому ник на худе можно менять, а импорт всё равно узнаёт игрока
-  const muNick=p=>(p&&(p.mu||p.nick)||'').trim().toLowerCase();
-  const sameSeats=g=>g.seats.every((nick,i)=>muNick(person(S.seats[i].pid))===nick.toLowerCase());
-  // сначала по нику на MafiaUniverse, потом по нику ещё не привязанного игрока, без учёта регистра; так у знакомых сохраняются фото
-  function personByNick(nick){
-    const k=nick.toLowerCase();
-    let p=S.roster.find(r=>(r.mu||'').trim().toLowerCase()===k)||S.roster.find(r=>!r.mu&&r.nick.trim().toLowerCase()===k);
-    if(!p){p={id:newId(),nick};S.roster.push(p)}
-    p.mu=nick;
-    return p.id;
-  }
   let muNote='';
   const notReady=g=>`У игры «${g.title}» на MafiaUniverse ещё нет рассадки. Когда организатор её сделает, нажмите закладку ещё раз.`;
-  function muSeat(g,quiet){
-    if(!g.ready){muNote=notReady(g);return false}
-    if(inProgress()&&!confirm(`Рассадить «${g.title}»? Роли, статусы, фолы и ночи текущей игры сбросятся.`))return false;
-    resetGame();
-    S.seats.forEach((s,i)=>{s.pid=g.seats[i]?personByNick(g.seats[i]):''});
-    // номер игры — порядковый номер игры за этим столом: тур 3 становится «Игра 3», первый финал после 14 туров — «Игра 15»
-    const k=muList().indexOf(g);if(k>=0)S.game=k+1;
+  function selectMuGame(g){
     S.mu.cur=g.key;
-    if(!quiet)muNote=`Рассажено: ${g.title}.`;
-    return true;
+    $('#shGame').value=g.key;
+    muNote=g.ready?`Выбрана игра «${g.title}».`:notReady(g);
   }
   function muStep(d){
     const list=muList();if(!list.length){muNote='Сначала выберите стол.';return}
     const k=list.findIndex(g=>g.key===S.mu.cur),g=list[k<0?(d>0?0:list.length-1):k+d];
-    if(g)muSeat(g);else muNote=d>0?'Это последняя игра стола.':'Это первая игра стола.';
+    if(g)selectMuGame(g);else muNote=d>0?'Это последняя игра стола.':'Это первая игра стола.';
   }
-  // первая несыгранная игра стола: если её рассадка уже на местах, ничего не меняется
   function muCurrent(){
-    const g=muList().find(x=>!x.ended);
-    if(!g)return 'Все игры этого стола уже сыграны.';
-    if(!g.ready)return notReady(g);
-    if(g.key===S.mu.cur&&sameSeats(g))return `Рассадка совпадает: ${g.title}.`;
-    return muSeat(g,true)?`Рассажено: ${g.title}.`:'Рассадка не изменилась.';
+    const list=muList(),g=list.find(x=>x.key===S.mu.cur)||list.find(x=>!x.ended)||list[0];
+    if(!g)return 'У стола пока нет игр.';
+    selectMuGame(g);
+    return muNote;
   }
   // игра для протокола MafiaUniverse: места, роли, фолы, первый убиенный, лучший ход, победитель и заметка с голосованиями
   const voteLines=()=>days().map((d,k)=>{
@@ -313,8 +282,8 @@ function startPanel(){
   }
   const showNow=(what,id)=>requestShow(what,id,'show');
   const prefetch=(what,id)=>{if(id&&Net.online())Net.send({kind:'muFetch',what,id,mode:'prefetch',requestId:++requestId})};
-  $('#shGame').addEventListener('change',e=>prefetch('game',e.target.value));
-  $('#shTour').addEventListener('change',()=>prefetch('results',tourId()));
+  $('#shGame')?.addEventListener('change',e=>prefetch('game',e.target.value));
+  $('#shTour')?.addEventListener('change',()=>prefetch('results',tourId()));
   Net.on(m=>{
     if(m.kind!=='muFetched'||showRequests[m.what]?.requestId!==m.requestId||showRequests[m.what]?.id!==m.id)return;
     delete showRequests[m.what];
@@ -345,7 +314,7 @@ function startPanel(){
     // кнопка показанного экрана итогов подсвечена, как кнопки сцен
     document.querySelectorAll('[data-a=showRes],[data-a=showGame]').forEach(b=>b.classList.toggle('on',b.dataset.s===S.scene));
   }
-  $('#shTour').addEventListener('input',renderShow); // подсказка про список игр меняется сразу
+  $('#shTour')?.addEventListener('input',renderShow); // подсказка про список игр меняется сразу
   let muSig='';
   muTake=d=>{
     const sig=JSON.stringify(d);if(sig===muSig)return; // закладка повторяет сообщение, пока пульт не ответит
@@ -380,18 +349,19 @@ function startPanel(){
         <button data-a="muPrev">← Предыдущая</button><button data-a="muNext">Следующая →</button><button data-a="muForget" class="warn">Забыть турнир</button></div>
       ${muNote?`<div class="muted" style="margin-top:6px" role="status">${esc(muNote)}</div>`:''}
       ${list.length?`<table class="mt">${list.map(g=>`<tr class="${g.key===S.mu.cur?'cur':''}"><td>${esc(g.round)}</td><td class="muted">${esc(g.judge)}</td><td>${g.ended?'<span class="ok">сыграна</span>':g.ready?'':'<span class="muted">нет рассадки</span>'}</td>
-        <td class="act"><button data-a="muSeat" data-k="${esc(g.key)}"${g.ready?'':' disabled'}>${g.key===S.mu.cur?'Рассадить заново':'Рассадить'}</button></td></tr>`).join('')}</table>`:''}`;
+        <td class="act"><button data-a="muSelect" data-k="${esc(g.key)}">Выбрать</button>
+        <button data-a="muAdmin" data-k="${esc(g.key)}"${g.ready?'':' disabled'}>Рассадка в админке</button></td></tr>`).join('')}</table>`:''}`;
   }
-  $('#fFouls').addEventListener('change',e=>{S.showFouls=e.target.checked;commit()});
+  $('#fFouls')?.addEventListener('change',e=>{S.showFouls=e.target.checked;commit()});
 
   let pvOn=false;
-  $('#pvBtn').addEventListener('click',()=>{
+  $('#pvBtn')?.addEventListener('click',()=>{
     pvOn=!pvOn;$('#pvWrap').style.display=pvOn?'block':'none';$('#pvBtn').textContent=pvOn?'Скрыть превью':'Показать превью';
     const pv=$('#pv');
     if(pvOn&&!pv.firstChild){const f=document.createElement('iframe');f.src=BASE+'/hud#'+S.judge.hud;f.title='Превью оверлея';pv.appendChild(f);fitPv()}
     if(!pvOn)pv.innerHTML='';
   });
-  function fitPv(){const pv=$('#pv'),f=pv.querySelector('iframe');if(f)f.style.transform=`scale(${pv.clientWidth/1920})`}
+  function fitPv(){const pv=$('#pv'),f=pv?.querySelector('iframe');if(f)f.style.transform=`scale(${pv.clientWidth/1920})`}
   function showTab(t){
     document.querySelectorAll('.page').forEach(p=>p.classList.toggle('on',p.dataset.page===t));
     document.querySelectorAll('.p-tabs a').forEach(a=>{const on=a.dataset.tab===t;a.classList.toggle('on',on);if(on)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
@@ -405,10 +375,10 @@ function startPanel(){
   const paintMini=(el,p)=>{if(el._p===p)return;el._p=p;el.style.backgroundImage=p?`url("${p}")`:'none';el.innerHTML=p?'':SIL};
   let rosterSig='';
   renderFn=function(){
-    setVal($('#jLink'), BASE + '/#' + S.judge.room);
-    for (const [id, route] of [['#hLink', '/hud'], ['#rLink', '/win-civilians'], ['#bLink', '/win-mafia']]) {
-      setVal($(id), BASE + route + '#' + S.judge.hud);
-    }
+    $('#pGameTitle').textContent=S.title;
+    const judgeUrl=BASE+'/judge#'+S.judge.room;
+    setVal($('#jLink'),judgeUrl);
+    $('#jOpen').href=judgeUrl;
     const sorted=[...S.roster].sort((a,b)=>a.nick.localeCompare(b.nick,'ru'));
     const opts='<option value="">— свободно —</option>'+sorted.map(r=>`<option value="${esc(r.id)}">${esc(r.nick)}</option>`).join('');
     S.seats.forEach((s,i)=>{
@@ -426,11 +396,15 @@ function startPanel(){
       else{sel.style.display='';kl.textContent='';setVal(sel,s.status==='voted'||s.status==='removed'?s.status:'alive')}
       fn.textContent=fo;fn.className='fn'+(fo>=4?' f4':fo===3?' f3':'');
     });
-    renderMu();renderShow();
+    renderMu();
+    setVal($('#fGame'),S.game);
+    for(const [id, route] of [['#hLink','/hud'],['#rLink','/win-civilians'],['#bLink','/win-mafia']]){
+      setVal($(id),BASE+route+'#'+S.judge.hud);
+    }
+    renderShow();
     const scene=SCENES.includes(S.scene)?S.scene:'game';
     $('#scenes').querySelectorAll('button').forEach(b=>{const on=b.dataset.s===scene;b.classList.toggle('on',on);b.setAttribute('aria-pressed',on)});
-    setVal($('#fTitle'),S.title);setVal($('#fGame'),S.game);setVal($('#fAccent'),okColor(S.accent)?S.accent.toLowerCase():ACCENT_DEF);$('#fFouls').checked=S.showFouls!==false;
-    // в старых играх нет новых настроек, поэтому для них показывается значение по умолчанию
+    setVal($('#fTitle'),S.title);setVal($('#fAccent'),okColor(S.accent)?S.accent.toLowerCase():ACCENT_DEF);$('#fFouls').checked=S.showFouls!==false;
     UI_FIELDS.forEach(([k,,,,,un])=>{const v=S.ui[k]??UI_DEF[k];setVal($('#u_'+k),v);$('#o_'+k).textContent=un==='×'?(+v).toFixed(2)+'×':v+(un==='%'?'%':' px')});
 
     const sig=S.roster.map(r=>r.id).join(',');
@@ -457,6 +431,7 @@ function startPanel(){
         th.nextElementSibling.style.visibility=ph?'visible':'hidden';
       });
       const si=seatOf(id);el.querySelector('.seat').textContent=si>=0?'место '+(si+1):'';
+      el.querySelector('[data-a=delPerson]').disabled=si>=0;
     });
     if(pendingFocus){const inp=rl.querySelector(`.rn[data-id="${CSS.escape(pendingFocus)}"]`);pendingFocus=null;if(inp){inp.focus();inp.select();inp.scrollIntoView({block:'nearest'})}}
 
@@ -500,21 +475,22 @@ function startPanel(){
       return `<span class="${on?'on':'off'}">${on?'●':'○'} ${NAMES[k]}</span>`;
     }).join('');
   }
-  Net.on(m=>{
-    if(m.kind==='hello'||m.kind==='pong'){seen[m.mode]=Date.now();drawDisp()}
-  });
+  Net.on(m=>{if(m.kind==='hello'||m.kind==='pong'){seen[m.mode]=Date.now();drawDisp()}});
   setInterval(()=>{Net.send({kind:'ping'});drawDisp()},15000);
+  drawDisp();Net.send({kind:'ping'});
   const ST = {
     ok: ['ok', 'Подключено к серверу', ''],
     connecting: ['wait', 'Подключение…', ''],
     off: ['bad', 'Нет связи с сервером', 'Изменения отправятся, когда связь вернётся.']
   };
   // связь видна в шапке на любой странице, а подробности — на странице «OBS»
-  const showNet=s=>{const x=ST[s]||ST.off;$('#cDot').className='dot '+x[0];$('#cSt').textContent=x[1];$('#cHint').textContent=x[2];$('#hDot').className='dot '+x[0];$('#hSt').textContent=x[1]};
+  const showNet=s=>{
+    const x=ST[s]||ST.off;
+    $('#cDot').className='dot '+x[0];$('#cSt').textContent=x[1];$('#cHint').textContent=x[2];
+    $('#hDot').className='dot '+x[0];$('#hSt').textContent=x[1];
+  };
   Net.onStatus(showNet);showNet(Net.status);
-  drawDisp();
   renderFn();
-  Net.send({kind:'ping'});
   if(muInbox){const d=muInbox;muInbox=null;muTake(d)} // закладка успела прислать рассадку, пока пульт ждал пароль
 }
 
@@ -522,7 +498,7 @@ function startPanel(){
 function connectPanel(){
   const client=Array.from(crypto.getRandomValues(new Uint8Array(16)), b=>b.toString(16).padStart(2,'0')).join('');
   const pending=[];
-  let base=null,draft=null,inFlight=null,seq=0,started=false,retryTimer;
+  let base=null,draft=null,inFlight=null,seq=0,started=false,retryTimer,attempted=false;
   const open = key => Net.connect({ role: 'host', key });
   function login(text){
     if(!started)document.body.className='panel';
@@ -531,7 +507,7 @@ function connectPanel(){
       <button>Войти</button><div class="muted" id="lSt" role="status"></div></form>`);
     document.getElementById('lSt').textContent=text;
     document.getElementById('lKey').focus();
-    document.getElementById('login').onsubmit=e=>{e.preventDefault();open(document.getElementById('lKey').value)};
+    document.getElementById('login').onsubmit=e=>{e.preventDefault();attempted=true;open(document.getElementById('lKey').value)};
   }
   function report(error=''){
     const notice=document.getElementById('syncError');
@@ -559,7 +535,7 @@ function connectPanel(){
       clearTimeout(retryTimer);
       retryTimer=null;
     }
-    if(st==='badkey')login('Неверный пароль');
+    if(st==='badkey')login(attempted?'Неверный пароль':'');
     else if(st==='limited')login('Слишком много попыток входа. Повторите через минуту.');
     else if(st==='off'&&!started&&document.getElementById('lSt'))document.getElementById('lSt').textContent='Нет связи с сервером, повторяю…';
   });
@@ -585,13 +561,13 @@ function connectPanel(){
         else applyOps(S,message.ops);
       }
       draft=structuredClone(S);
-      if(!started){started=true;startPanel()}
+      if(!started){started=true;startPanel(m.scope)}
       flush();renderFn();
     }
     else if(m.kind==='photo'){if(m.data)photos[m.pid]=m.data;else delete photos[m.pid];renderFn()}
     else if(m.kind==='error')report(m.error);
     else if(m.kind==='peers'&&started)document.getElementById('jSt').textContent=m.judge?'Судья на связи':'Судья ещё не зашёл';
   });
-  login('');
+  open();
 }
 if (MODE === 'panel') connectPanel();

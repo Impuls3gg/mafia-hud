@@ -1,7 +1,8 @@
 /* ================= ОБЩЕЕ ================= */
 const route = location.pathname.replace(/\/$/, '');
+const GAME_ID = route.split('/')[2];
 const BASE = location.origin + route.replace(/\/(panel|hud|win-civilians|win-mafia)$/, '');
-const MODE = route.endsWith('/panel') ? 'panel'
+const MODE = route.endsWith('/panel') || route === '/games/' + GAME_ID ? 'panel'
   : route.endsWith('/win-civilians') ? 'red'
   : route.endsWith('/win-mafia') ? 'black'
   : location.hash === '#wait' ? 'wait' : 'overlay';
@@ -24,17 +25,6 @@ const BADGE={
   mafia:`<img class="rb-rev" src="${REVOLVER_IMG}" alt="">`
 };
 const ROLE_PLATE_MS=4000;
-const UI_FIELDS=[
-  ['th','Высота плашек игроков',120,400,2,'px'],
-  ['ts','Размер подписей на плашках',.6,1.8,.05,'×'],
-  ['gap','Промежуток между плашками',0,40,1,'px'],
-  ['mb','Отступ плашек от низа',0,200,1,'px'],
-  ['side','Отступ плашек от краёв',0,200,1,'px'],
-  ['ns','Размер таблицы ночей',.5,1.6,.05,'×'],
-  ['is','Размер плашки с названием',.5,1.6,.05,'×'],
-  ['ot','Прозрачность выбывших игроков',0,100,5,'%']
-];
-const ACCENTS=['#c41e3a','#e8590c','#f2c230','#2f9e44','#1c7ed6','#8977fe','#d6336c','#e8e8e8'];
 function applyAccent(c){
   c=okColor(c)?c:ACCENT_DEF;
   const r=parseInt(c.slice(1,3),16),g=parseInt(c.slice(3,5),16),b=parseInt(c.slice(5,7),16),st=document.documentElement.style;
@@ -182,7 +172,7 @@ const Net = (() => {
       socket.close();
     }
     setStatus('connecting');
-    const endpoint = BASE.replace(/^http/, 'ws') + '/ws?' + new URLSearchParams({ role: params.role });
+    const endpoint = location.origin.replace(/^http/, 'ws') + '/ws?' + new URLSearchParams({ role: params.role, game: GAME_ID });
     const useSession = params.role === 'host' && session && Date.now() < sessionUntil;
     socket = new WebSocket(endpoint);
     socket.onopen = () => {

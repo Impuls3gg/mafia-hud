@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="strict-origin-when-cross-origin">
+  <title>Мафия</title>
+  <link rel="stylesheet" href="/assets/app-theme.css">
+  <link rel="stylesheet" href="/assets/platform.css">
+  <script defer src="/assets/rules.js"></script>
+  <script defer src="/assets/operator-tools.js"></script>
+  <script defer src="/assets/tournament-admin.js"></script>
+  <script defer src="/assets/platform.js"></script>
+</head>
+<body>
+  <header class="site-header">
+    <div class="wrap header-inner">
+      <a class="home" href="/">Мафия</a>
+      <nav class="site-nav" id="siteNav" aria-label="Разделы приложения" hidden>
+        <a href="/" data-section="games">Игры</a>
+        <a href="/tournaments" data-section="tournaments">Турниры</a>
+        <a href="/ratings" data-section="ratings">Рейтинги</a>
+      </nav>
+      <button id="logout" class="plain" type="button" hidden>Выйти</button>
+    </div>
+  </header>
+  <main class="wrap" id="main" aria-busy="true">
+    <p id="notice" role="status"></p>
+    <div id="content"></div>
+  </main>
+</body>
+</html>

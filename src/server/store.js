@@ -1,4 +1,4 @@
-// SQLite хранит снимок текущей игры и фотографии в одном файле.
+// Состояние, фотографии и подтверждения правок хранятся в отдельной базе каждой игры.
 const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
@@ -49,23 +49,6 @@ function openStorage(dir) {
     }
   }
 
-  // Переносим прежний Docker-том или папку judge/data при первом открытии.
-  // Появление строки игры и перенос фото подтверждаются одной транзакцией.
-  const oldGame = path.join(dir, 'game.json');
-  const oldPhotos = path.join(dir, 'photos');
-  if (!readGame.get() && fs.existsSync(oldGame)) {
-    const state = JSON.parse(fs.readFileSync(oldGame, 'utf8'));
-    const files = fs.existsSync(oldPhotos) ? fs.readdirSync(oldPhotos, { withFileTypes: true }) : [];
-    transaction(() => {
-      writeGame.run(JSON.stringify(state));
-      for (const file of files) {
-        if (!file.isFile() || !PHOTO_ID.test(file.name)) continue;
-        const data = fs.readFileSync(path.join(oldPhotos, file.name), 'utf8');
-        if (validPhoto(file.name, data)) writePhoto.run(file.name, data);
-      }
-    });
-  }
-
   return {
     close: () => db.close(),
     game: () => JSON.parse(readGame.get()?.state ?? 'null'),
@@ -93,4 +76,15 @@ function openStorage(dir) {
   };
 }
 
-module.exports = { openStorage, PHOTO_ID, validPhoto };
+function readSnapshot(dir) {
+  const file = path.join(dir, 'hud.sqlite');
+  if (!fs.existsSync(file)) return null;
+  const db = new DatabaseSync(file, { readOnly: true });
+  try {
+    return JSON.parse(db.prepare('SELECT state FROM game WHERE id = 1').get()?.state ?? 'null');
+  } finally {
+    db.close();
+  }
+}
+
+module.exports = { openStorage, readSnapshot, PHOTO_ID, validPhoto };

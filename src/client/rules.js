@@ -198,7 +198,6 @@ function normalState(s){return {...defaultState(),...s,ui:{...UI_DEF,...s.ui}}}
 function waitLeft(){const w=S.wait;return w.running?Math.max(0,w.endAt-Date.now()):Math.max(0,w.left)}
 const person=id=>S.roster.find(r=>r.id===id)||null;
 const seatNick=i=>{const p=person(S.seats[i].pid);return p?p.nick:''};
-const photoKey=s=>s.pid&&photos[s.pid+'.'+s.role]?s.pid+'.'+s.role:s.pid; // для экранов: фото роли, а если его нет — обычное
 function shotNight(i){return S.nights.findIndex(n=>n.shot===String(i))}
 const blankDeathReport=(i,manual)=>({i,manual,black:[],red:[],sheriff:''});
 function deathReportsView(){
@@ -223,9 +222,14 @@ function statusOf(i){
   if(s.status==='removed'||(+s.fouls||0)>=4||s.techFouls?.length===2)return 'removed';
   return s.status==='voted'?'voted':'alive';
 }
-function buildView(){
+function buildView(getPhoto = id => photos[id]){
   return {t:Date.now(),title:S.title,game:+S.game||0,
-    seats:S.seats.map((s,i)=>({pid:s.pid||'',ph:photoKey(s)||'',hp:!!photos[photoKey(s)],nick:seatNick(i),role:s.role,status:statusOf(i),fouls:+s.fouls||0})),showFouls:S.showFouls!==false,
+    seats:S.seats.map((s,i)=>{
+      const roleKey=s.pid&&s.role?s.pid+'.'+s.role:'';
+      const rolePhoto=roleKey&&getPhoto(roleKey);
+      return {pid:s.pid||'',ph:rolePhoto?roleKey:s.pid||'',hp:!!(rolePhoto||s.pid&&getPhoto(s.pid)),
+        nick:seatNick(i),role:s.role,status:statusOf(i),fouls:+s.fouls||0};
+    }),showFouls:S.showFouls!==false,
     nights:S.nights.map(n=>({shot:n.shot||'',check:n.check||'',don:n.don||''})),
     ui:Object.assign({},UI_DEF,S.ui),accent:okColor(S.accent)?S.accent:ACCENT_DEF,
     scene:SCENES.includes(S.scene)?S.scene:'game',

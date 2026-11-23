@@ -8,7 +8,42 @@ const newRoom = () => crypto.randomBytes(16).toString('hex');
 const MAX_PHOTOS = 64 * 1024 * 1024;
 const photoSize = photos => Object.values(photos).reduce((size, photo) => size + photo.length, 0);
 
-function createGame(dir, rulesFile) {
+function withTournamentRoster(state, changes, placement) {
+  if (!changes.length) return state;
+  const roster = new Map(state.roster.map(player => [player.id, player]));
+  const seated = new Set(state.seats.map(seat => seat.pid));
+  if (placement?.revision > (state.tournamentSeatingRevision ?? 0)) {
+    for (const pid of placement.seats) seated.add(pid);
+  }
+  for (const { id, nick, mu, active } of changes) {
+    if (!active && !seated.has(id)) roster.delete(id);
+    else roster.set(id, { id, nick, mu });
+  }
+  // Сохраняем игроков за столом даже при достижении лимита списка игры.
+  for (const pid of roster.keys()) {
+    if (roster.size <= 5000) break;
+    if (!seated.has(pid)) roster.delete(pid);
+  }
+  return { ...state, roster: [...roster.values()], tournamentRosterRevision: changes.at(-1).revision };
+}
+
+function withTournamentSeating(state, placement) {
+  if (!placement || placement.revision <= (state.tournamentSeatingRevision ?? 0)) return state;
+  const roster = new Map(state.roster.map(player => [player.id, player]));
+  for (const player of placement.players ?? []) if (!roster.has(player.id)) roster.set(player.id, player);
+  const reserved = new Set(placement.seats);
+  for (const pid of roster.keys()) {
+    if (roster.size <= 5000) break;
+    if (!reserved.has(pid)) roster.delete(pid);
+  }
+  const seats = state.seats.map((seat, index) => {
+    const pid = placement.seats[index];
+    return roster.has(pid) ? { ...seat, pid } : { ...seat, pid: '' };
+  });
+  return { ...state, roster: [...roster.values()], seats, tournamentSeatingRevision: placement.revision };
+}
+
+function createGame(dir, rulesFile, { judgeSeating = false, fixedGameNumber = null, tournament } = {}) {
   const storage = openStorage(dir);
   const rules = vm.createContext({ S: null, photos: storage.photos() });
   vm.runInContext(fs.readFileSync(rulesFile, 'utf8'), rules, { filename: rulesFile });
@@ -16,6 +51,7 @@ function createGame(dir, rulesFile) {
 
   function makeState(value) {
     const state = rules.normalState(value);
+    if (fixedGameNumber !== null) state.game = fixedGameNumber;
     const { room: judge, hud } = value.judge || {};
     const judgeRoom = room(judge) ? judge : newRoom();
     state.judge = { room: judgeRoom, hud: room(hud) && hud !== judgeRoom ? hud : newRoom() };
@@ -44,6 +80,7 @@ function createGame(dir, rulesFile) {
   }
 
   function persist(state, receipt, deleted = []) {
+    if (fixedGameNumber !== null) state.game = fixedGameNumber;
     state.revision = rules.S.revision + 1;
     if (!validState(state)) return 'Некорректные данные игры.';
     storage.save(state, receipt, deleted);
@@ -54,6 +91,13 @@ function createGame(dir, rulesFile) {
     }
     return null;
   }
+  function syncTournamentRoster(state, placement) {
+    return tournament ? withTournamentRoster(state, tournament.rosterChanges(state.tournamentRosterRevision ?? 0), placement) : state;
+  }
+  const sameSeating = state => state.seats.every((seat, index) => seat.pid === rules.S.seats[index].pid);
+  function overlayPhoto(id) {
+    return tournament?.photo(id) || rules.photos[id] || null;
+  }
 
   function deletedPhotos(state) {
     const roster = new Set(state.roster.map(player => player.id));
@@ -61,20 +105,107 @@ function createGame(dir, rulesFile) {
     return Object.keys(rules.photos).filter(key => removed.has(key.split('.')[0]));
   }
 
+  function seatingLocked() {
+    const state = rules.S;
+    return Boolean(state.winner || state.timer.speaker || state.timer.restartSpeaker ||
+      state.days.length > 1 || state.days.some(day => day.noms.length || day.out?.length) ||
+      state.nights.some(night => night.shot || night.check || night.don) ||
+      state.lh.some(Boolean) || state.lhExtra || state.deathReports?.length ||
+      state.seats.some(seat => seat.role || seat.status !== 'alive' || seat.fouls || seat.bonus || seat.pen || rules.techPenalty(seat)));
+  }
+
+  function currentSeating() {
+    const state = rules.S;
+    const roster = new Map(state.roster.map(player => [player.id, player.nick]));
+    const names = state.seats.map(seat => roster.get(seat.pid) ?? '');
+    const version = crypto.createHash('sha256').update(JSON.stringify(state.seats.map((seat, i) => [seat.pid, names[i]]))).digest('hex');
+    return { names, version, locked: seatingLocked() };
+  }
+
+  function seatParticipants({ names, version, shuffle }) {
+    if (!judgeSeating) return { error: 'Рассадку турнира задаёт организатор.' };
+    const previous = currentSeating();
+    if (previous.locked) return { error: 'Игра уже началась. Рассадку можно менять до начала игры.' };
+    if (version !== previous.version) return { error: 'Рассадка изменилась. Загрузите текущие места и повторите.' };
+    if (typeof shuffle !== 'boolean' || !Array.isArray(names) || names.length !== previous.names.length ||
+        names.some(name => typeof name !== 'string' || name.length > 256)) {
+      return { error: 'Проверьте имена участников.' };
+    }
+    names = names.map(name => name.trim());
+    if (shuffle && names.filter(Boolean).length < 2) return { error: 'Для перемешивания нужны хотя бы два участника.' };
+
+    const candidate = structuredClone(rules.S);
+    // Сначала закрепляем игроков, которые остались на месте, затем ищем остальных по нику.
+    const seats = names.map((name, i) => name && name === previous.names[i] ? candidate.seats[i].pid : '');
+    const assigned = new Set(seats.filter(Boolean));
+    const byName = new Map();
+    for (const player of candidate.roster) {
+      if (!byName.has(player.nick)) byName.set(player.nick, []);
+      byName.get(player.nick).push(player.id);
+    }
+    names.forEach((nick, i) => {
+      if (!nick || seats[i]) return;
+      let pid = byName.get(nick)?.find(id => !assigned.has(id));
+      if (!pid) {
+        pid = 'p' + newRoom();
+        candidate.roster.push({ id: pid, nick });
+      }
+      assigned.add(pid);
+      seats[i] = pid;
+    });
+    if (shuffle) {
+      const occupied = seats.filter(Boolean);
+      const original = [...occupied];
+      do {
+        for (let i = occupied.length - 1; i > 0; i--) {
+          const j = crypto.randomInt(i + 1);
+          [occupied[i], occupied[j]] = [occupied[j], occupied[i]];
+        }
+      } while (occupied.every((pid, i) => pid === original[i]));
+      let next = 0;
+      for (const [i, pid] of seats.entries()) if (pid) seats[i] = occupied[next++];
+    }
+    if (seats.every((pid, i) => pid === rules.S.seats[i].pid)) return { changed: false };
+    candidate.seats = seats.map(pid => rules.emptySeat(pid));
+    const error = persist(candidate);
+    return { error, changed: !error };
+  }
+
   return {
     close: storage.close,
     rooms: () => rules.S?.judge || {},
     owns(role, key) { return !!rules.S && rules.S.judge[role === 'judge' ? 'room' : 'hud'] === key; },
-    open() {
+    open({ title = '', roster, seating, tournamentRosterRevision } = {}) {
       if (rules.S) return;
       const state = makeState(rules.defaultState());
+      state.title = title;
+      if (tournamentRosterRevision !== undefined) state.tournamentRosterRevision = tournamentRosterRevision;
+      if (roster) {
+        state.roster = roster;
+        state.seats = Array.from({ length: 10 }, (_, i) => rules.emptySeat(seating[i] || ''));
+      }
+      if (!validState(state)) throw new Error('Некорректная рассадка.');
       storage.save(state);
       rules.S = state;
     },
     state: () => rules.S,
-    view: () => rules.buildView(),
+    hasActivity: seatingLocked,
+    view() {
+      const view = rules.buildView(overlayPhoto);
+      const design = tournament?.design();
+      if (!design) return view;
+      return { ...view, ...design, title: design.title || view.title };
+    },
+    syncTournamentRoster() {
+      const placement = tournament?.placement(rules.S.tournamentSeatingRevision ?? 0);
+      const state = withTournamentSeating(syncTournamentRoster(rules.S, placement), placement);
+      if (state !== rules.S) persist(state);
+    },
+    overlayPhoto,
     timer: () => rules.timerView(),
-    judgeState: () => rules.stateMsg(),
+    judgeState: () => ({ ...rules.stateMsg(), ...(judgeSeating ? { seating: currentSeating() } : {}) }),
+    seatingOpen: () => judgeSeating && !seatingLocked(),
+    seatParticipants,
     nominationConfirmation(message) {
       const warning = rules.nominationWarning(message);
       return warning && !rules.confirmedNomination(message, warning) ? warning : null;
@@ -127,6 +258,7 @@ function createGame(dir, rulesFile) {
       const error = applyEdits(candidate, ops);
       if (error) return { error };
       if (!validState(candidate)) return { error: 'Некорректные данные игры.' };
+      if (tournament && !sameSeating(candidate)) return { error: 'Рассадка меняется в админке турнира.' };
       for (const day of candidate.days) {
         if (day.changed) day.changed = day.changed.filter(i => candidate.seats[i].status === rules.S.seats[i].status);
       }
@@ -136,6 +268,7 @@ function createGame(dir, rulesFile) {
     deletePlayer(pid, receipt) {
       if (receipt && storage.receipt(receipt.client) >= receipt.seq) return { duplicate: true };
       if (!id(pid)) return { error: 'Некорректный игрок.' };
+      if (tournament && rules.S.seats.some(seat => seat.pid === pid)) return { error: 'Сначала измените рассадку в админке турнира.' };
       const candidate = structuredClone(rules.S);
       rules.removePlayer(candidate, pid);
       const deleted = deletedPhotos(candidate);
@@ -146,6 +279,7 @@ function createGame(dir, rulesFile) {
           !Array.isArray(value.nights) || !value.nights.length) return null;
       const state = makeState(value);
       if (!validState(state)) return null;
+      if (tournament && !sameSeating(state)) return null;
       reconcileFinishedDay(state);
       return { state, photos: Object.create(null), size: 0 };
     },
@@ -158,7 +292,13 @@ function createGame(dir, rulesFile) {
       return true;
     },
     replace(draft) {
-      const { state, photos } = draft;
+      const { photos } = draft;
+      let { state } = draft;
+      if (tournament) {
+        delete state.tournamentRosterRevision;
+        state.tournamentSeatingRevision = rules.S.tournamentSeatingRevision;
+        state = syncTournamentRoster(state);
+      }
       state.revision = rules.S.revision + 1;
       storage.replace(state, photos);
       rules.S = state;
@@ -168,4 +308,4 @@ function createGame(dir, rulesFile) {
   };
 }
 
-module.exports = { createGame };
+module.exports = { createGame, withTournamentRoster, withTournamentSeating };

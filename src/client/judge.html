@@ -5,44 +5,47 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>Мафия · судья</title>
+<link rel="stylesheet" href="/assets/app-theme.css">
 <style>
-:root{color-scheme:dark;--red:#c41e3a;--don:#8977fe;--brass:#c9a44c;--foul:#f2c230;--hot:#ff5a6e;--ok:#3ecf6e;--line:#2c2c34;--speak:#c5bfff}
+:root{color-scheme:dark;--red:#c41e3a;--don:#a599fa;--brass:#c9a44c;--foul:#f2c230;--hot:var(--app-red);--ok:var(--app-green);--line:var(--app-line);--speak:var(--app-blue)}
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#000;color:#e9e7e2;font:15px/1.3 'Segoe UI',Roboto,Arial,sans-serif;padding-bottom:24px}
-header{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:8px;padding:8px 12px;background:#000;border-bottom:1px solid var(--line)}
+body{background:var(--app-bg);color:var(--app-text);font:15px/1.3 var(--app-font);padding-bottom:24px}
+header{position:sticky;top:0;z-index:3;display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--app-bar);border-bottom:1px solid var(--line)}
 header h1{flex:1;min-width:0;font-size:16px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-#conn{flex:none;font-size:13px;color:#a09d95}
+#judgeParent{color:var(--app-blue);text-underline-offset:3px}
+#conn{flex:none;font-size:13px;color:var(--app-muted)}
 #conn.ok{color:var(--ok)}#conn.bad{color:var(--hot)}
-#msg{padding:32px 16px;text-align:center;color:#a09d95}
+#msg{padding:32px 16px;text-align:center;color:var(--app-muted)}
 .wrap{max-width:760px;margin:0 auto;padding:0 8px}
 .judge-layout{display:grid;grid-template-areas:"timer" "nights" "reports" "game"}
 .judge-layout[hidden]{display:none}
 .judge-game{grid-area:game;min-width:0;container-type:inline-size;padding-top:6px}
 .judge-nights{grid-area:nights}
 .judge-reports{grid-area:reports}
-.judge-side{align-self:start;min-width:0;border-bottom:1px solid var(--line);padding:0 0 8px}
-.judge-side>summary{padding:9px 4px;cursor:pointer;font-size:14px;font-weight:600;color:#d3cfc5}
+.judge-side{align-self:start;min-width:0;background:var(--app-surface);border-bottom:1px solid var(--line);padding:0 4px 8px}
+.judge-side>summary{padding:9px 4px;cursor:pointer;font-size:14px;font-weight:600;color:var(--app-text)}
 @media (min-width:1180px){
   .wrap{max-width:1520px;padding:0 12px}
   .judge-layout{grid-template-columns:minmax(220px,250px) minmax(0,1fr) minmax(265px,300px);gap:0 12px;
     grid-template-areas:"nights timer reports" "nights game reports";grid-template-rows:auto 1fr}
   .judge-side{margin-top:8px;padding:0 8px 8px;border:1px solid var(--line);border-radius:8px}
 }
-h2{margin:16px 2px 6px;font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#a09d95}
-button{min-height:40px;min-width:0;padding:0 8px;font:inherit;font-size:14px;color:inherit;background:#1c1c22;border:1px solid #34343c;border-radius:6px;touch-action:manipulation}
+h2{margin:16px 2px 6px;font-size:14px;font-weight:660;color:var(--app-muted)}
+button{min-height:40px;min-width:0;padding:0 8px;font:inherit;font-size:14px;color:inherit;background:var(--app-raised);border:1px solid var(--app-border-strong);border-radius:5px;touch-action:manipulation}
 button:disabled{opacity:.4}
-button.on{background:#e9e7e2;border-color:#e9e7e2;color:#121216;font-weight:600}
-select,textarea{font:inherit;color:inherit;background:#111116;border:1px solid #34343c;border-radius:6px}
+button.on{background:var(--app-blue-fill);border-color:var(--app-blue-fill);color:var(--app-blue-ink);font-weight:650}
+select,textarea{font:inherit;color:inherit;background:var(--app-bg);border:1px solid var(--app-border-strong);border-radius:5px}
 select:disabled{opacity:.45}
+:focus-visible{outline:2px solid var(--app-blue);outline-offset:1px}
 /* таймер речи */
-.timer{position:sticky;top:41px;z-index:2;background:#000;padding:8px 0 6px;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"clock who" "btns btns";align-items:center;gap:6px 12px;border-bottom:1px solid var(--line)}
+.timer{position:sticky;top:41px;z-index:2;background:var(--app-bar);padding:8px 6px 6px;display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"clock who" "btns btns";align-items:center;gap:6px 12px;border-bottom:1px solid var(--line)}
 .judge-layout>.timer{grid-area:timer;align-self:start;min-width:0}
 .timer .clock{grid-area:clock}.timer .who{grid-area:who}.timer .tbtns{grid-area:btns;justify-content:flex-start;align-items:center}
 .timer-options{display:flex;flex-wrap:wrap;gap:6px 12px;margin-left:auto}
 .timer.finished .clock{color:var(--hot)}
-.clock{font:300 54px/1 'Segoe UI',Roboto,Arial,sans-serif;font-variant-numeric:tabular-nums;color:var(--speak);letter-spacing:.02em}
-.who{min-width:0;font-size:13px;color:#a09d95}
-.who b{display:block;font-size:15px;color:#e9e7e2;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.clock{font:500 clamp(40px,8vw,51px)/1 var(--app-number);font-variant-numeric:tabular-nums;color:var(--speak)}
+.who{min-width:0;font-size:13px;color:var(--app-muted)}
+.who b{display:block;font-size:15px;color:var(--app-text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .tbtns{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 .tbtns button{min-width:44px;font-size:18px}
 .tbtns [data-countdown]{font-size:14px}
@@ -50,8 +53,10 @@ select:disabled{opacity:.45}
 .hide input{width:18px;height:18px}
 /* таблица игроков */
 table.pr{width:100%;border-collapse:collapse;table-layout:fixed}
-.pr th{font-size:12px;font-weight:600;color:#a09d95;padding:6px 2px;border:1px solid var(--line)}
+.pr th{font-size:12px;font-weight:600;color:var(--app-muted);background:var(--app-raised);padding:6px 2px;border:1px solid var(--line)}
 .pr td{border:1px solid var(--line);padding:2px;vertical-align:middle;height:46px}
+.pr .player{background:var(--app-surface)}
+.pr .player:nth-child(even of .player){background:var(--app-stripe)}
 .pr .c-nom{width:40px}.pr .c-n{width:28px}.pr .c-f{width:92px}.pr .c-l{width:56px}.pr .c-r{width:66px}.pr .c-s{width:66px}
 .pr .c-tech{width:134px}
 /* баллы: на узком экране отдельный режим «Баллы», на широком все колонки сразу, как на MafiaUniverse */
@@ -61,7 +66,7 @@ body.mode-scores .pr .scol{display:table-cell}
 .modes{display:flex;gap:4px;margin:0 0 6px}
 .modes button{flex:1;min-height:36px}
 @container (min-width:720px){.pr .scol,body.mode-scores .pr .gcol{display:table-cell}.modes{display:none}}
-.sc-in{width:100%;min-height:40px;padding:0 6px;font:inherit;font-size:15px;text-align:center;color:#e9e7e2;background:#111116;border:1px solid #2a2a32;border-radius:6px}
+.sc-in{width:100%;min-height:40px;padding:0 6px;font:inherit;font-variant-numeric:tabular-nums;font-size:15px;text-align:center;color:var(--app-text);background:var(--app-bg);border:1px solid var(--line);border-radius:5px}
 .sc-in::placeholder{color:#55535b}
 .sc-in.set{color:#7fd17f;border-color:#2f5a2f}.sc-in.neg.set{color:#ff8a8a;border-color:#5a2f2f}
 .sc-in.bad{border-color:var(--hot);color:var(--hot)}
@@ -70,14 +75,14 @@ body.mode-scores .pr .scol{display:table-cell}
 .tech-controls .sc-in{padding:0 1px;font-size:13px}
 .tech-steppers{display:grid;gap:1px}
 .lhtype{width:100%;min-height:42px;margin-bottom:6px;padding:0 10px;font:inherit;font-size:16px;color:inherit;background:#111116;border:1px solid #34343c;border-radius:6px}
-.pr .no{text-align:center;color:#77757d;font-size:14px}
-.pr tr.out .nick{color:#77757d}
+.pr .no{text-align:center;color:var(--app-muted);font-size:14px;font-variant-numeric:tabular-nums}
+.pr tr.out .nick{color:var(--app-muted)}
 .pr tr.out .nick-name{text-decoration:line-through}
-.pr tr.speak td{background:#17142b}
+.pr tr.speak td{background:var(--app-blue-soft)}
 .pr tr.speak .nick{color:var(--speak)}
 .pr .day-opener{outline:2px solid var(--brass);outline-offset:-2px}
 .nomb{width:100%;min-height:40px;padding:0;font-size:18px;background:none;border:0;opacity:.35}
-.nomb.on{opacity:1;background:#2b2450;border-radius:6px;color:#fff}
+.nomb.on{opacity:1;background:var(--app-blue-soft);border-radius:5px;color:var(--app-text)}
 .lhb{width:100%;min-height:40px;padding:0 2px;font-size:12px;background:#111116;border:1px solid #2a2a32;border-radius:6px;color:#5c5a63;white-space:nowrap;overflow:hidden}
 .lhb.set{background:#3a2f12;border-color:#6b5520;color:var(--foul);font-weight:700;font-size:13px}
 .lhb.open{border-color:var(--foul)}
@@ -93,6 +98,16 @@ body.mode-scores .pr .scol{display:table-cell}
 .nick-line .nick{flex:1;width:auto}
 .speech-actions{display:flex;flex:none;gap:4px;white-space:nowrap}
 .speech-actions button{min-height:36px;padding:0 5px;font-size:12px}
+.seating{margin-bottom:8px}
+.seating summary{cursor:pointer;font-weight:600}
+.seating[open] summary{margin-bottom:8px}
+.seating-form{display:grid;gap:8px}
+.seating-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 10px}
+.seating-fields label{display:grid;grid-template-columns:24px minmax(0,1fr);align-items:center;gap:4px;color:var(--app-muted)}
+.seating-fields input{width:100%;min-height:40px;padding:0 6px;font:inherit;font-size:16px;color:var(--app-text);background:var(--app-bg);border:1px solid var(--app-border-strong);border-radius:5px}
+.seating-actions{display:flex;gap:6px;flex-wrap:wrap}
+#seatingShuffle{background:var(--app-blue-fill);border-color:var(--app-blue-fill);color:var(--app-blue-ink);font-weight:650}
+.seating-error{color:var(--hot)}
 .fo{display:flex;align-items:center;justify-content:space-between}
 .fo button{width:38px;min-height:38px;padding:0;font-size:20px;background:none;border:0}
 .fo .p{color:#7fb36b}.fo .m{color:#b07a7a}
@@ -123,7 +138,7 @@ body.noroles .pr .rcell,body.noroles .res{display:none!important}
   .acts button{padding:0 4px;font-size:13px}
 }
 /* голосование */
-.card{background:#0d0d11;border:1px solid var(--line);border-radius:8px;padding:8px 10px}
+.card{background:var(--app-surface);border:1px solid var(--line);border-radius:6px;padding:8px 10px}
 .stage{margin-bottom:6px;font-size:13px;color:var(--foul)}
 .cand{padding:6px 0;border-top:1px solid var(--line)}
 .cand:first-of-type{border-top:0}
@@ -138,7 +153,7 @@ body.noroles .pr .rcell,body.noroles .res{display:none!important}
 .voters button{min-height:38px;padding:0;font-size:14px}
 .voters-note{margin-top:4px}
 .vote-history{border-top:1px solid var(--line);margin-top:10px;padding-top:8px}
-.vote-history h3{margin-bottom:4px;font-size:13px;color:#a09d95;font-weight:600}
+.vote-history h3{margin-bottom:4px;font-size:13px;color:var(--app-muted);font-weight:600}
 .archive-edit{margin:6px 0 8px;padding:8px;border:1px solid var(--line);border-radius:8px}
 .archive-edit>.vote-actions,.saved-ballot>.edit-archive{margin-top:7px}
 .saved-ballot{font-size:13px;color:#c9c6bf}
@@ -146,10 +161,11 @@ body.noroles .pr .rcell,body.noroles .res{display:none!important}
 .saved-ballot summary{cursor:pointer;padding:7px 0}
 .saved-ballot table{width:100%;border-collapse:collapse;margin:2px 0 8px}
 .saved-ballot th,.saved-ballot td{border-top:1px solid var(--line);padding:5px 4px;text-align:left;overflow-wrap:anywhere}
-.saved-ballot th{font-weight:600;color:#a09d95}
+.saved-ballot th{font-weight:600;color:var(--app-muted);background:var(--app-raised)}
+.saved-ballot tbody tr:nth-child(even){background:var(--app-stripe)}
 .saved-ballot th:nth-child(2),.saved-ballot td:nth-child(2){width:64px;text-align:right;font-variant-numeric:tabular-nums}
 .vsum{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;margin-top:8px;font-size:13px;color:#a09d95;gap:8px}
-.vsum .go{background:#2b2450;border-color:#5a4fb0;color:#fff;font-weight:600}
+.vsum .go{background:var(--app-blue-fill);border-color:var(--app-blue-fill);color:var(--app-blue-ink);font-weight:650}
 .vote-actions,.vote-rounds{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .vote-rounds[hidden]{display:none}
 .vote-rounds{margin-top:6px}
@@ -158,7 +174,7 @@ body.noroles .pr .rcell,body.noroles .res{display:none!important}
 .lift .up{background:#e64545;border-color:#e64545;color:#fff;font-weight:600}
 .lift .stay{background:#7cb518;border-color:#7cb518;color:#10200a;font-weight:600}
 .outres{font-size:15px;margin-bottom:6px}
-.muted{color:#8a877f;font-size:13px}
+.muted{color:var(--app-muted);font-size:13px}
 .win3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .win3 button{min-height:44px;font-weight:600}
 .win3 .red.on{background:var(--red);border-color:var(--red);color:#fff}.win3 .black.on{background:#000;border-color:#fff;color:#fff}.win3 .draw.on{background:#5a5a62;border-color:#8a8a92;color:#fff}
@@ -179,7 +195,7 @@ body.noroles .pr .rcell,body.noroles .res{display:none!important}
 .reports{width:100%;table-layout:fixed;border-collapse:collapse}
 .reports[hidden]{display:none}
 .reports th,.reports td{padding:3px;border:1px solid var(--line)}
-.reports thead th{color:#a09d95;font-size:12px}
+.reports thead th{color:var(--app-muted);background:var(--app-raised);font-size:12px}
 .reports .report-owner{width:30%;text-align:left}
 .reports tbody th{font-size:14px}
 .report-owner small{display:block;color:#a09d95;font-size:11px;font-weight:400}
@@ -203,8 +219,8 @@ textarea{width:100%;min-height:96px;padding:8px;resize:vertical}
 </style>
 </head>
 <body>
-<header><h1 id="title">Судья</h1><span id="conn">Подключение…</span></header>
-<div id="msg">Ждём данные от пульта…</div>
+<header><h1 id="title">Судья</h1><a id="judgeParent" style="font-size:13px;white-space:nowrap" hidden>К рейтингу</a><span id="conn">Подключение…</span></header>
+<div id="msg">Подключаемся к игре…</div>
 <div class="wrap judge-layout" id="app" hidden>
   <section class="timer" aria-label="Таймер">
     <div class="clock" id="clock" aria-live="off">1:00</div>
@@ -237,6 +253,18 @@ textarea{width:100%;min-height:96px;padding:8px;resize:vertical}
     </table>
   </details>
   <main class="judge-game">
+  <details class="card seating" id="seating" hidden>
+    <summary>Рассадка</summary>
+    <form class="seating-form" id="seatingForm">
+      <div class="seating-fields" id="seatingFields"></div>
+      <div class="seating-actions">
+        <button type="submit" id="seatingSave">Сохранить рассадку</button>
+        <button type="submit" id="seatingShuffle">Перемешать</button>
+        <button type="button" id="seatingReload" hidden>Загрузить текущие места</button>
+      </div>
+      <p class="muted" id="seatingNotice" role="status" hidden></p>
+    </form>
+  </details>
   <div class="modes" role="group" aria-label="Колонки таблицы"><button type="button" data-mode="game">Игра</button><button type="button" data-mode="scores">Баллы</button></div>
   <datalist id="dl-b"></datalist><datalist id="dl-p"></datalist>
   <table class="pr" aria-label="Игроки">
@@ -262,6 +290,7 @@ textarea{width:100%;min-height:96px;padding:8px;resize:vertical}
 const ROLES=[['','—'],['civ','Мир'],['sheriff','Шер'],['mafia','Маф'],['don','Дон']];
 const STATE={killed:n=>`убит, ночь ${n}`,voted:()=>'заголосован',removed:()=>'удалён'};
 const room=location.hash.slice(1);
+const gameId=location.pathname.split('/')[2];
 const $=id=>document.getElementById(id);
 let ws=null,panelOn=false,last=null,open=null,lhEditor=null;
 
@@ -279,7 +308,60 @@ function btn(text,action,{on=false,cls='',label='',disabled=false}={}){
   return b;
 }
 const nickOf=i=>(last.seats[i]&&last.seats[i].nick)||'— свободно —';
-const seatOpts=(sel,blank='—')=>{sel.add(new Option(blank,''));last.seats.forEach((_,i)=>sel.add(new Option((i+1)+' '+nickOf(i),String(i))))};
+function seatOpts(select){
+  select.add(new Option('—',''));
+  last.seats.forEach((seat,i)=>{
+    const option=new Option((i+1)+' '+nickOf(i),String(i));
+    option.disabled=!seat.nick;
+    select.add(option);
+  });
+}
+
+const seatingInputs=Array.from({length:10},(_,i)=>{
+  const input=el('input',{type:'text',maxLength:256,placeholder:'Ник игрока',autocomplete:'off'});
+  input.setAttribute('aria-label','Игрок на месте '+(i+1));
+  $('seatingFields').append(el('label',{},String(i+1),input));
+  return input;
+});
+let seatingVersion,seatingInitialized=false,seatingDirty=false,seatingPending=null,seatingRequest=0;
+function seatingFeedback(text,error=false){
+  const message=$('seatingNotice');
+  message.textContent=text;message.hidden=!text;message.classList.toggle('seating-error',error);
+}
+function drawSeating(){
+  const seating=last.seating,box=$('seating');
+  box.hidden=!seating||seating.locked;
+  if(box.hidden)return;
+  if(!seatingInitialized){
+    seatingInitialized=true;box.open=seating.names.every(name=>!name);
+  }
+  if(!seatingDirty&&!seatingPending&&seatingVersion!==seating.version){
+    seatingInputs.forEach((input,i)=>{input.value=seating.names[i]});
+    seatingVersion=seating.version;
+  }
+  const stale=seatingDirty&&seatingVersion!==seating.version;
+  const disabled=!panelOn||!!seatingPending;
+  $('seatingReload').hidden=!stale;
+  $('seatingReload').disabled=disabled;
+  $('seatingSave').disabled=$('seatingShuffle').disabled=disabled||stale;
+  seatingInputs.forEach(input=>{input.readOnly=disabled});
+  if(stale&&!seatingPending)seatingFeedback('Рассадка изменилась. Загрузите текущие места и повторите.',true);
+}
+$('seatingForm').oninput=()=>{
+  seatingDirty=true;
+  if(seatingVersion===last.seating.version)seatingFeedback('');
+};
+$('seatingReload').onclick=()=>{seatingDirty=false;seatingFeedback('');drawSeating()};
+$('seatingForm').onsubmit=event=>{
+  event.preventDefault();
+  if(seatingPending||$('seating').hidden)return;
+  const shuffle=event.submitter?.id==='seatingShuffle',request=++seatingRequest;
+  const names=seatingInputs.map(input=>input.value.trim());
+  if(shuffle&&names.filter(Boolean).length<2){seatingFeedback('Для перемешивания нужны хотя бы два участника.',true);return}
+  if(send({kind:'seating',names,version:seatingVersion,shuffle,request})){
+    seatingPending={request,shuffle};drawSeating();
+  }
+};
 
 /* ---- таймер ---- */
 const timerClock=createTimerClock(),timerDisplay=createTimerDisplay();
@@ -334,7 +416,7 @@ document.querySelectorAll('.modes button').forEach(b=>b.onclick=()=>{mode=b.data
 applyMode();
 // поле балла: можно выбрать из списка или набрать «0,5», «0.5», «,3»; Enter переходит к следующему игроку
 function scoreInput(i,f,v,list,label){
-  const inp=el('input',{type:'text',inputMode:'decimal',className:'sc-in'+(f==='b'?'':' neg')+(v>0?' set':''),value:fmtScore(v),placeholder:'0,00',disabled:!panelOn});
+  const inp=el('input',{type:'text',inputMode:'decimal',className:'sc-in'+(f==='b'?'':' neg')+(v>0?' set':''),value:fmtScore(v),placeholder:'0,00',disabled:!panelOn||!last.seats[i].nick});
   inp.setAttribute('list',list);inp.setAttribute('aria-label',label+', игрок '+(i+1));inp.dataset.f=f;inp.dataset.i=i;
   const commit=()=>{
     const raw=inp.value.trim().replace(',','.'),n=raw===''?0:Number(raw);
@@ -346,7 +428,7 @@ function scoreInput(i,f,v,list,label){
   };
   inp.onchange=commit;
   inp.onkeydown=e=>{if(e.key!=='Enter')return;e.preventDefault();if(!commit())return;
-    const next=[...document.querySelectorAll(`.sc-in[data-f="${f}"]`)].find(field=>+field.dataset.i>i);
+    const next=[...document.querySelectorAll(`.sc-in[data-f="${f}"]:not(:disabled)`)].find(field=>+field.dataset.i>i);
     if(next){next.focus();next.select()}else inp.blur()};
   return inp;
 }
@@ -360,7 +442,7 @@ function techCell(i,s){
     const label=size+' техфол, игрок '+(i+1);
     const addLabel='Начислить '+label+(count===1?' · удаление':'');
     const removeLabel='Снять '+label;
-    const add=btn('+',{a:'techFoul',i,v,count,d:1},{cls:'p',label:addLabel,disabled:count>=2});
+    const add=btn('+',{a:'techFoul',i,v,count,d:1},{cls:'p',label:addLabel,disabled:!s.nick||count>=2});
     const remove=btn('−',{a:'techFoul',i,v,count,d:-1},{cls:'m',label:removeLabel,disabled:amount===0});
     add.title=addLabel;remove.title=removeLabel;
     return el('div',{className:'fo tech-stepper'},add,el('span',{textContent:text+' '+amount}),remove);
@@ -390,7 +472,7 @@ function drawTimer(){
 }
 function speechButtons(i){
   const buttons=[60,30].map(sec=>btn(sec+' с',()=>startTimer(sec*1000,String(i)),
-    {label:'Речь '+sec+' секунд, игрок '+(i+1)}));
+    {label:'Речь '+sec+' секунд, игрок '+(i+1),disabled:!last.seats[i].nick}));
   const extra=btn('Доп. +30 с',{a:'timer',op:'extra',i},
     {label:'Дополнительные 30 секунд и два фола, игрок '+(i+1)});
   return el('div',{className:'speech-actions'},...buttons,extra);
@@ -426,20 +508,20 @@ function drawRows(){
     const tr=el('tr',{className:'player'+(out?' out':'')+(opener?' day-opener':'')});
     const nominated=noms.includes(String(i));
     const nominationLabel=nominated&&voting!=='vote'?'Кандидат № '+(i+1):'Выставить игрока '+(i+1);
-    const nb=btn('👍',{a:'nom',i},{cls:'nomb',on:nominated,label:nominationLabel,disabled:out||voting!=='vote'});
-    const nick=el('button',{type:'button',className:'nick'},el('span',{className:'nick-name',textContent:nickOf(i)}));
+    const nb=btn('👍',{a:'nom',i},{cls:'nomb',on:nominated,label:nominationLabel,disabled:!s.nick||out||voting!=='vote'});
+    const nick=el('button',{type:'button',className:'nick',disabled:!s.nick},el('span',{className:'nick-name',textContent:nickOf(i)}));
     nick.setAttribute('aria-expanded',isOpen);
     if(out)nick.append(el('small',{textContent:STATE[s.st](s.kn)}));
     nick.onclick=()=>{open=isOpen?null:i;draw()};
     const fo=el('span',{className:foulClass(s.fouls),textContent:s.fouls});
-    const role=el('select',{disabled:!panelOn,className:'rc-'+(s.role||'none')});role.setAttribute('aria-label','Роль игрока '+(i+1));
+    const role=el('select',{disabled:!panelOn||!s.nick,className:'rc-'+(s.role||'none')});role.setAttribute('aria-label','Роль игрока '+(i+1));
     ROLES.forEach(([v,t])=>role.add(new Option(t,v)));role.value=s.role||'';
     role.onchange=()=>send({a:'role',i,v:role.value});
     const number=el('td',{className:'no',textContent:i+1});
     if(opener)number.title='Открывает стол';
     tr.append(el('td',{className:'gcol nom-cell'},nb),number,
       el('td',{className:'name-cell'},el('div',{className:'nick-line'},nick,speechButtons(i))),
-      el('td',{className:'gcol foul-cell'},el('div',{className:'fo'},btn('+',{a:'foul',i,d:1},{cls:'p',label:'Фол',disabled:s.fouls>=4}),fo,btn('−',{a:'foul',i,d:-1},{cls:'m',label:'Снять фол',disabled:s.fouls<1}))),
+      el('td',{className:'gcol foul-cell'},el('div',{className:'fo'},btn('+',{a:'foul',i,d:1},{cls:'p',label:'Фол',disabled:!s.nick||s.fouls>=4}),fo,btn('−',{a:'foul',i,d:-1},{cls:'m',label:'Снять фол',disabled:s.fouls<1}))),
       el('td',{className:'gcol lh-cell'},lhCell(i)),
       el('td',{className:'rcell gcol'},hide?'':role),
       el('td',{className:'scol score-bonus'},scoreInput(i,'b',s.b||0,'dl-b','Допы')),
@@ -466,7 +548,7 @@ const picksOf=i=>lhEditor?.i===i?lhEditor.picks:savedPicksOf(i);
 function lhCell(i){
   const full=last.lh.some(Boolean)&&last.lhExtra&&!savedPicksOf(i).length;
   const picks=picksOf(i),editing=lhEditor?.i===i;
-  const b=el('button',{type:'button',className:'lhb'+(picks.length?' set':'')+(editing?' open':''),disabled:!panelOn||!!full,
+  const b=el('button',{type:'button',className:'lhb'+(picks.length?' set':'')+(editing?' open':''),disabled:!panelOn||!last.seats[i].nick||!!full,
     textContent:picks.length?playerNumbers(picks):'л.х.'});
   if(full)b.title='Уже записаны два лучших хода';
   b.setAttribute('aria-label','Лучший ход игрока '+(i+1));
@@ -828,7 +910,11 @@ function draw(){
   if(!last)return;
   $('msg').hidden=true;$('app').hidden=false;
   $('title').textContent=(last.title||'Судья')+(last.game?' · игра '+last.game:'');
+  const parent=$('judgeParent');
+  parent.hidden=!last.scope?.ratingId;
+  if(!parent.hidden)parent.href='/ratings/'+last.scope.ratingId;
   drawTimer();
+  drawSeating();
   if(typing()){rowsPending=true;drawSpeechRows()}else drawRows();
   drawVote();drawNights();drawReports();drawWinner();
   // заметки не перерисовываются, пока судья их печатает
@@ -836,18 +922,24 @@ function draw(){
   $('notes').disabled=!panelOn;
 }
 function connect(){
-  ws=new WebSocket(location.origin.replace(/^http/,'ws')+'/ws?role=judge');
+  ws=new WebSocket(location.origin.replace(/^http/,'ws')+'/ws?'+new URLSearchParams({role:'judge',game:gameId}));
   ws.onopen=()=>ws.send(JSON.stringify({kind:'auth',room}));
   ws.onmessage=e=>{
     const m=JSON.parse(e.data);
     if(m.kind==='peers'){
       const was=panelOn;panelOn=m.panel>0;
-      setConn(panelOn?'ok':'bad',panelOn?'На связи':'Пульт не подключён');
+      setConn(panelOn?'ok':'bad',panelOn?'На связи':'Игра недоступна');
       if(panelOn&&!was)ws.send(JSON.stringify({kind:'hello',timerUpdates:true}));
       draw();
     }else if(m.kind==='error'){
       setConn('bad',m.error);
       if(pendingStart){pendingStart=null;timerDisplay.clear();drawTimerUpdate()}
+      if(seatingPending){seatingPending=null;seatingFeedback(m.error,true);drawSeating()}
+    }else if(m.kind==='seatingResult'&&seatingPending?.request===m.request){
+      const {shuffle}=seatingPending;seatingPending=null;
+      if(!m.error){seatingDirty=false;seatingVersion=undefined}
+      drawSeating();
+      seatingFeedback(m.error||(shuffle?'Рассадка перемешана.':'Рассадка сохранена.'),Boolean(m.error));
     }else if(m.kind==='nominationConfirm'&&last){
       const {i,speaker,nominee}=m;
       if(confirm(`Игрок ${who([speaker])} уже выставил игрока ${who([nominee])}. Выставить игрока ${who([i])}?`)){
@@ -858,6 +950,9 @@ function connect(){
     }else if(m.kind==='timer'&&last){
       syncTimer(m.timer);last.timer=m.timer;
       if(m.foul)updateFouls(m.foul);
+      if(last.seating&&typeof m.seatingOpen==='boolean'){
+        last.seating.locked=!m.seatingOpen;drawSeating();
+      }
       drawTimerUpdate();
     }else if(m.kind==='state'){
       if(panelOn)setConn('ok','На связи');
@@ -868,10 +963,10 @@ function connect(){
       syncTimer(m.timer);last=m;draw();
     }
   };
-  ws.onclose=e=>{panelOn=false;pendingStart=null;timerDisplay.clear();setConn('bad',e.code===4403?'Пульт не подключён':'Нет связи, переподключаюсь…');draw();setTimeout(connect,2000)};
+  ws.onclose=e=>{panelOn=false;pendingStart=null;seatingPending=null;timerDisplay.clear();setConn('bad',e.code===4403?'Ссылка недействительна':'Нет связи, переподключаюсь…');draw();setTimeout(connect,2000)};
 }
 if(/^[a-f0-9]{32}$/.test(room))connect();
-else{setConn('bad','Неверная ссылка');$('msg').textContent='Откройте полную ссылку из пульта.'}
+else{setConn('bad','Неверная ссылка');$('msg').textContent='Откройте игру из списка или используйте ссылку судьи.'}
 </script>
 </body>
 </html>

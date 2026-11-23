@@ -38,7 +38,7 @@ function tempData(t) {
   return dir;
 }
 
-async function startServer(t, secret, data, fixedPort) {
+async function startServer(t, secret, data, fixedPort, provision = true) {
   const port = fixedPort || await freePort();
   const dir = data || tempData(t);
   const env = { ...process.env, PORT: port, JUDGE_SECRET: secret || '', DATA_DIR: dir };
@@ -57,13 +57,85 @@ async function startServer(t, secret, data, fixedPort) {
     if (open) break;
     await sleep(50);
   }
-  return {
+  const http = `http://localhost:${port}`;
+  let gameId;
+  if (secret && provision) {
+    const admin = await signIn(http, secret);
+    const dashboard = await admin('/dashboard').then(response => response.json());
+    gameId = dashboard.games[0]?.id;
+    if (!gameId) {
+      const tournament = await testTournament(admin);
+      const [newGame] = await stageGames(admin, tournament.id);
+      await placeTestGame(admin, tournament.id, newGame.id, tournament.seating);
+      gameId = newGame.id;
+    }
+  }
+  const server = {
     port,
     data: dir,
     stop,
-    http: `http://localhost:${port}`,
-    url: (id, role, key) => ({ address: `ws://localhost:${port}/ws?role=${role}`, auth: { room: id, key } }),
+    http,
+    gameId,
+    gameUrl: http + '/games/' + gameId,
+    url: (id, role, key, selected = gameId) => ({
+      address: `ws://localhost:${port}/ws?` + new URLSearchParams({ role, game: selected ?? '' }),
+      auth: { room: id, key },
+    }),
   };
+  return server;
+}
+
+async function signIn(base, key) {
+  const session = await fetch(base + '/api/session', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ key }),
+  });
+  if (!session.ok) throw new Error('Не удалось войти, HTTP ' + session.status);
+  const cookie = session.headers.get('set-cookie').split(';')[0];
+  return (route, method = 'GET', data) => fetch(base + '/api' + route, {
+    method, headers: { cookie, ...(data === undefined ? {} : { 'content-type': 'application/json' }) },
+    body: data === undefined ? undefined : JSON.stringify(data),
+  });
+}
+
+async function testTournament(admin) {
+  const tournament = await admin('/tournaments', 'POST', { title: 'Тестовый турнир' }).then(response => response.json());
+  const players = await Promise.all(Array.from({ length: 10 }, (_, i) =>
+    admin('/tournaments/' + tournament.id + '/participants', 'POST', { nick: 'Игрок ' + (i + 1) })
+      .then(response => response.json())));
+  return { id: tournament.id, seating: players.map(player => player.id) };
+}
+
+async function stageGames(admin, tournament, { name = 'Тестовая игра', rounds = 1, players = 10 } = {}) {
+  const path = '/tournaments/' + tournament;
+  const setup = await admin(path + '/admin/stage', 'POST', { name, rounds, players, coefficient: 1, final: false, swiss: false });
+  if (!setup.ok) throw new Error('Не удалось создать стадию. ' + await setup.text());
+  const { stages } = await admin(path + '/admin').then(response => response.json());
+  const stageId = stages.find(stage => stage.name === name).id;
+  const created = await admin(path + '/admin/create', 'POST', { stageId });
+  if (!created.ok) throw new Error('Не удалось создать игры. ' + await created.text());
+  return (await admin(path).then(response => response.json())).games.filter(game => game.stageId === stageId);
+}
+
+async function placeTestGame(admin, tournament, gameId, players) {
+  const seating = Array.from({ length: 10 }, (_, index) => players[index] ?? '');
+  const response = await admin('/tournaments/' + tournament + '/admin/place', 'POST', { gameId, seating, overwrite: true });
+  if (!response.ok) throw new Error('Не удалось сохранить рассадку. ' + await response.text());
+  return admin('/games/' + gameId).then(response => response.json());
+}
+
+async function seedSeating(t, server, game) {
+  const client = await connect(t, server.url(game.links.judge.split('#')[1], 'judge', undefined, game.id));
+  try {
+    const message = kind => client.texts().map(JSON.parse).find(item => item.kind === kind);
+    client.ws.send('{"kind":"hello"}');
+    const initial = await until(() => message('state'));
+    const names = initial.seats.map((_, i) => 'Игрок ' + (i + 1));
+    client.ws.send(JSON.stringify({ kind: 'seating', names, version: initial.seating.version, shuffle: false, request: 1 }));
+    const result = await until(() => message('seatingResult'));
+    if (!result || result.error) throw new Error(result?.error || 'Рассадка не сохранена.');
+  } finally {
+    client.ws.close();
+  }
 }
 
 // Подключается и ждёт: при отказе возвращает код закрытия, иначе клиента с накопленными сообщениями.
@@ -133,10 +205,10 @@ function maskedFrame(opcode, fin, payload) {
 }
 
 // Клиент без браузера: нужен, чтобы отправлять дроблёные сообщения.
-function rawClient(t, port, id, role, key) {
+function rawClient(t, port, id, role, key, gameId) {
   return new Promise((resolve, reject) => {
     const sock = net.connect(port, 'localhost', () => {
-      sock.write(`GET /ws?role=${role} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${crypto.randomBytes(16).toString('base64')}\r\n\r\n`);
+      sock.write(`GET /ws?role=${role}&game=${gameId} HTTP/1.1\r\nHost: localhost\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Version: 13\r\nSec-WebSocket-Key: ${crypto.randomBytes(16).toString('base64')}\r\n\r\n`);
     });
     t.after(() => sock.destroy());
     sock.on('error', reject);
@@ -210,4 +282,4 @@ function killTree(child) {
   else { try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') throw error; } }
 }
 
-module.exports = { ROOT, sleep, room, tempData, startServer, connect, until, hostSend, maskedFrame, rawClient, findChrome, openPage };
+module.exports = { ROOT, sleep, room, tempData, startServer, signIn, testTournament, stageGames, placeTestGame, seedSeating, connect, until, hostSend, maskedFrame, rawClient, findChrome, openPage };

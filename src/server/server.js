@@ -2,319 +2,166 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { isIP } = require('node:net');
-const { createGame } = require('./game');
-const { createAccess, CLOSE_NO_ROOM, CLOSE_SESSION_EXPIRED } = require('./access');
-const { attachTransport, send: sendText } = require('./transport');
-const { createResults } = require('./show-results');
+const { createGame, withTournamentRoster, withTournamentSeating } = require('./game');
+const { readSnapshot } = require('./store');
+const { openCatalog } = require('./catalog');
+const { createChannel } = require('./channel');
+const { createAccess, CLOSE_NO_ROOM } = require('./access');
+const { attachTransport } = require('./transport');
+const { createPlatform } = require('./platform');
 
 const PORT = +process.env.PORT || 8787;
 const BIND_HOST = process.env.BIND_HOST || '127.0.0.1';
 const SECRET = process.env.JUDGE_SECRET || '';
 const TRUST_PROXY = process.env.HUD_TRUST_CADDY === '1';
 const CLIENT_DIR = path.join(__dirname, '..', 'client');
-const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', '..', 'judge', 'data');
-const PAGES = {
-  '/': 'judge.html',
-  '/panel': 'mafia-hud.html',
-  '/hud': 'mafia-hud.html',
-  '/win-civilians': 'mafia-hud.html',
-  '/win-mafia': 'mafia-hud.html',
-};
-const ASSETS = {
-  '/assets/style.css': 'style.css',
-  '/assets/rules.js': 'rules.js',
-  '/assets/client.js': 'client.js',
-  '/assets/state.js': 'state.js',
-  '/assets/timer.js': 'timer.js',
-  '/assets/screen.js': 'screen.js',
-  '/assets/panel.js': 'panel.js',
-};
-const MAX_PER_ROOM = 8;
-const CLOSE_RELOAD = 4000;
-const FROM_SERVER = { app: 'mafiahud', from: 'server' };
-const TIMER_START_ACK = { countdown: 'countdownAck', speak: 'speechAck', restart: 'restartAck' };
-const encode = message => JSON.stringify({ ...FROM_SERVER, ...message });
-const send = (socket, message) => sendText(socket, encode(message));
-const roles = { host: new Set(), judge: new Set(), screen: new Set() };
-const game = SECRET ? createGame(DATA_DIR, path.join(CLIENT_DIR, 'rules.js')) : null;
-const access = createAccess(SECRET, game);
-const results = createResults(game, publish, send);
-let speechEnd, scheduledDeadline;
-
-function scheduleSpeechEnd(retry = 0) {
-  const timer = game?.state()?.timer;
-  const deadline = timer?.running ? timer.endAt : undefined;
-  if (speechEnd && scheduledDeadline === deadline) return;
-  clearTimeout(speechEnd);
-  speechEnd = null;
-  if (deadline === undefined) return;
-  scheduledDeadline = deadline;
-  const delay = Math.min(2147483647, Math.max(retry, deadline - Date.now()));
-  speechEnd = setTimeout(() => {
-    speechEnd = null;
-    try {
-      if (game.expireSpeech()) publishTimer();
-      else scheduleSpeechEnd();
-    } catch (error) {
-      console.error('Не удалось завершить речь:', error.message);
-      scheduleSpeechEnd(1000);
-    }
-  }, delay).unref();
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, '..', '..', 'data');
+const RULES = path.join(CLIENT_DIR, 'rules.js');
+const GAME_ROUTE = /^\/games\/([a-f0-9]{32})(?:\/(panel|judge|hud|win-civilians|win-mafia))?$/;
+const APP_ROUTE = /^\/(?:ratings(?:\/[a-f0-9]{32})?\/?|watch\/tournaments\/[a-f0-9]{32})$/;
+const TOURNAMENT_ROUTE = /^\/tournaments(?:\/([a-f0-9]{32})(?:\/(?:games(?:\/([a-f0-9]{32}))?|standings|participants|admin|operator|design|streams))?)?\/?$/;
+const WATCH_GAME_ROUTE = /^\/watch\/games\/([a-f0-9]{32})$/;
+const STREAM_ROUTE = /^\/stream\/[a-f0-9]{32}\/\d{1,4}$/;
+const ASSETS = new Set(['style.css', 'rules.js', 'client.js', 'operator-tools.js', 'state.js', 'timer.js', 'screen.js', 'panel.js',
+  'app-theme.css', 'platform.css', 'platform.js', 'tournament-admin.js', 'platform-stream.js']);
+const catalog = SECRET ? openCatalog(DATA_DIR) : null;
+const access = createAccess(SECRET);
+const channels = new Map();
+const gameDir = id => path.join(DATA_DIR, 'games', id);
+function tournamentPlacement(tournamentId, gameId, applied) {
+  const placement = catalog.workflow.placement(gameId);
+  if (!placement || placement.revision <= applied) return;
+  const seated = new Set(placement.seats);
+  return { ...placement, players: catalog.historicalRoster(tournamentId)
+    .filter(player => seated.has(player.id)).map(({ id, nick, mu }) => ({ id, nick, mu })) };
+}
+function readState(id, tournamentId = null) {
+  const live = channels.get(id);
+  if (live) return live.game.state();
+  const state = readSnapshot(gameDir(id));
+  if (!state || !tournamentId) return state;
+  const placement = tournamentPlacement(tournamentId, id, state.tournamentSeatingRevision ?? 0);
+  const roster = withTournamentRoster(state, catalog.rosterChanges(tournamentId, state.tournamentRosterRevision ?? 0), placement);
+  return withTournamentSeating(roster, placement);
 }
 
-function sendPeers() {
-  const judge = roles.judge.size;
-  for (const host of roles.host) send(host, { kind: 'peers', judge });
+function initialize(id, { title, roster = [], seating = [], number, tournamentRosterRevision }) {
+  const game = createGame(gameDir(id), RULES, { fixedGameNumber: number });
+  try { game.open({ title, roster, seating, tournamentRosterRevision }); }
+  finally { game.close(); }
 }
 
-function sendPhotos(socket, view) {
-  const visible = new Set(view.seats.flatMap(seat => [seat.pid, seat.ph]).filter(Boolean));
-  for (const id of socket.photos) if (!visible.has(id)) socket.photos.delete(id);
-  for (const pid of visible) {
-    if (socket.photos.has(pid)) continue;
-    socket.photos.add(pid);
-    send(socket, { kind: 'photo', pid, data: game.photo(pid) });
+function channelFor({ id, tournamentId, ratingId, number }) {
+  if (!channels.has(id)) {
+    const tournament = tournamentId ? {
+      design: () => catalog.design(tournamentId),
+      photo: key => catalog.photo(tournamentId, key),
+      rosterChanges: revision => catalog.rosterChanges(tournamentId, revision),
+      placement: applied => tournamentPlacement(tournamentId, id, applied),
+    } : undefined;
+    const game = createGame(gameDir(id), RULES, { judgeSeating: !tournamentId, fixedGameNumber: number, tournament });
+    try { game.syncTournamentRoster(); }
+    catch (error) { game.close(); throw error; }
+    channels.set(id, createChannel(game, access, { tournamentId, ratingId },
+      (winner, started) => catalog.syncGameStatus(id, winner, started)));
   }
-}
-
-function sendView(socket, view, text) {
-  sendPhotos(socket, view);
-  sendText(socket, text);
-}
-
-function publish(timerUpdate) {
-  scheduleSpeechEnd();
-  const timerText = timerUpdate && encode(timerUpdate);
-  let view, viewText;
-  for (const socket of roles.screen) {
-    if (!socket.introduced) continue;
-    if (timerText && socket.timerUpdates) {
-      sendText(socket, timerText);
-      continue;
-    }
-    if (!view) {
-      view = game.view();
-      viewText = encode({ kind: 'view', view });
-    }
-    sendView(socket, view, viewText);
-  }
-  let judgeText;
-  for (const socket of roles.judge) {
-    if (timerText && socket.timerUpdates) sendText(socket, timerText);
-    else sendText(socket, judgeText ??= JSON.stringify(game.judgeState()));
-  }
-  for (const socket of roles.host) send(socket, { kind: 'game', S: game.state(), ack: socket.seq });
-}
-
-function publishTimer(seat) {
-  const foul = seat === undefined ? undefined : { seat, count: game.state().seats[seat].fouls };
-  publish({ kind: 'timer', timer: game.timer(), foul });
-}
-
-function updateRooms() {
-  for (const role of ['judge', 'screen']) {
-    for (const socket of roles[role]) {
-      if (game.owns(role, socket.room)) continue;
-      roles[role].delete(socket);
-      socket.close(CLOSE_NO_ROOM);
-    }
-  }
-  sendPeers();
-}
-
-function photosChanged(ids) {
-  for (const pid of ids) {
-    for (const socket of roles.screen) socket.photos.delete(pid);
-    const text = encode({ kind: 'photo', pid, data: game.photo(pid) });
-    for (const socket of roles.host) sendText(socket, text);
-  }
-}
-
-function hostChange(socket, message) {
-  const { seq, client, revision } = message;
-  if (!Number.isSafeInteger(seq) || seq < 1 || typeof client !== 'string' || !/^[a-f0-9]{32}$/.test(client)) return;
-  const receipt = { client, seq };
-  const reject = (error, retry) => send(socket, { kind: 'game', S: game.state(), ack: seq, error, retry });
-  const before = game.rooms();
-  let result;
-  try {
-    if (message.kind === 'deletePlayer') result = game.deletePlayer(message.pid, receipt);
-    else if (!Array.isArray(message.ops) || !message.ops.every(op => Array.isArray(op) && op.length === 3)) {
-      return reject('Некорректные данные правки.');
-    } else result = game.patch(message.ops, receipt, revision);
-  } catch (error) {
-    console.error('Не удалось сохранить изменение:', error.message);
-    return reject('Сервер пока не сохранил правку. Повторяем отправку…', true);
-  }
-  if (result.error) return reject(result.error);
-  socket.seq = seq;
-  if (result.duplicate) return send(socket, { kind: 'game', S: game.state(), ack: seq });
-  if (before !== game.rooms() &&
-      (before.room !== game.rooms().room || before.hud !== game.rooms().hud)) updateRooms();
-  if (result.deleted?.length) photosChanged(result.deleted);
-  if (message.kind === 'patch' && message.ops.every(([path]) => path[0] === 'timer')) publishTimer();
-  else publish();
-}
-
-function fromHost(socket, message) {
-  if (message.kind === 'patch' || message.kind === 'deletePlayer') {
-    hostChange(socket, message);
-  } else if (message.kind === 'photo') {
-    const stored = socket.importing
-      ? game.importPhoto(socket.importing, message.pid, message.data)
-      : game.setPhoto(message.pid, message.data);
-    if (!stored) return send(socket, { kind: 'error', error: 'Фото не принято. Проверьте размер и формат.' });
-    if (!socket.importing) {
-      photosChanged([message.pid]);
-      publish();
-    }
-  } else if (message.kind === 'import') {
-    socket.importing = game.prepareImport(message.S);
-    if (!socket.importing) send(socket, { kind: 'error', error: 'Игра для переноса имеет неверный формат.' });
-  } else if (message.kind === 'moved' && socket.importing) {
-    game.replace(socket.importing);
-    socket.importing = null;
-    results.cancel();
-    updateRooms();
-    for (const other of roles.host) if (other !== socket) other.close(CLOSE_RELOAD);
-    publish();
-    send(socket, { kind: 'moved' });
-  } else if (message.kind === 'muFetch') results.fetch(socket, message);
-  else if (message.kind === 'muCancel') results.cancel();
-  else if (message.kind === 'ping') for (const screen of roles.screen) send(screen, { kind: 'ping' });
-}
-
-function fromPlayer(socket, message) {
-  if (!game.owns(socket.role, socket.room)) return;
-  if (socket.role === 'judge') {
-    if (message.kind === 'hello') {
-      socket.timerUpdates = message.timerUpdates === true;
-      sendText(socket, JSON.stringify(game.judgeState()));
-    }
-    else if (message.kind === 'cmd') {
-      const warning = message.a === 'nom' && game.nominationConfirmation(message);
-      if (warning) return send(socket, { kind: 'nominationConfirm', i: message.i, ...warning });
-      const day = game.state().days.length;
-      if (game.command(message)) {
-        if (message.a === 'timer' && day === game.state().days.length) publishTimer(message.op === 'extra' ? message.i : undefined);
-        else publish();
-      }
-      if (message.a === 'timer' && Number.isSafeInteger(message.request) && Object.hasOwn(TIMER_START_ACK, message.op)) {
-        send(socket, { kind: TIMER_START_ACK[message.op], request: message.request });
-      }
-    }
-    return;
-  }
-  if (message.kind === 'hello' && !socket.introduced) {
-    socket.introduced = true;
-    socket.timerUpdates = message.timerUpdates === true;
-    const view = game.view();
-    sendView(socket, view, encode({ kind: 'view', view }));
-  }
-  if ((message.kind === 'hello' || message.kind === 'pong') && socket.introduced &&
-      ['overlay', 'red', 'black'].includes(message.mode)) {
-    const presence = { kind: message.kind, mode: message.mode };
-    for (const host of roles.host) send(host, presence);
-  }
-}
-
-function initialPhotos(socket, ids) {
-  let index = 0;
-  function next(error) {
-    if (error || index === ids.length) return;
-    const pid = ids[index++];
-    sendText(socket, encode({ kind: 'photo', pid, data: game.photo(pid) }), next);
-  }
-  next();
+  const channel = channels.get(id);
+  channel.touch();
+  return channel;
 }
 
 function clientAddress(request) {
   const forwarded = request.headers['x-hud-client-ip'];
-  return TRUST_PROXY && typeof forwarded === 'string' && isIP(forwarded)
-    ? forwarded : request.socket.remoteAddress;
+  return TRUST_PROXY && typeof forwarded === 'string' && isIP(forwarded) ? forwarded : request.socket.remoteAddress;
 }
+const secure = request => Boolean(request.socket.encrypted || TRUST_PROXY && request.headers['x-forwarded-proto'] === 'https');
+function refreshTournament(id, change) {
+  for (const channel of channels.values()) {
+    if (channel.scope.tournamentId === id) channel.refreshTournament(change);
+  }
+}
+function closeGames(ids) {
+  for (const id of ids) {
+    channels.get(id)?.close();
+    channels.delete(id);
+  }
+}
+const platform = createPlatform({ catalog, access, clientAddress, secure, initialize, readState, refreshTournament, closeGames });
 
 function connected(socket, request) {
   const url = new URL(request.url, 'http://local');
   const role = url.searchParams.get('role');
-  if (!Object.hasOwn(roles, role)) return socket.close(1008);
-  const authTimer = setTimeout(() => socket.close(1008), 5000);
-  authTimer.unref();
-  let expiry;
-  let budget = 240;
-  let measuredAt = Date.now();
-  socket.on('close', () => {
-    clearTimeout(authTimer);
-    clearTimeout(expiry);
-    if (roles[role].delete(socket) && role === 'judge') sendPeers();
-    if (role === 'host') results.cancel(socket);
-  });
-  socket.on('message', (data, binary) => {
-    const now = Date.now();
-    budget = Math.min(240, budget + (now - measuredAt) * .12) - 1;
-    measuredAt = now;
-    if (budget < 0 || binary) return socket.close(1008);
+  const id = url.searchParams.get('game');
+  if (!['host', 'judge', 'screen'].includes(role)) return socket.close(1008);
+  const timer = setTimeout(() => socket.close(1008), 5000).unref();
+  socket.once('close', () => clearTimeout(timer));
+  socket.once('message', (data, binary) => {
+    clearTimeout(timer);
+    if (binary || data.length > 4096) return socket.close(1008);
     try {
       const message = JSON.parse(data.toString());
-      if (!message || typeof message !== 'object' || Array.isArray(message)) return;
-      if (!socket.role) {
-        if (message.kind !== 'auth' || data.length > 4096) return socket.close(1008);
-        const refused = access.refuse(role, message, clientAddress(request));
-        if (refused) return socket.close(refused);
-        if (roles[role].size >= MAX_PER_ROOM) return socket.close(1008);
-        if (role === 'host') game.open();
-        clearTimeout(authTimer);
-        Object.assign(socket, { role, room: message.room, seq: 0, photos: new Set() });
-        roles[role].add(socket);
-        if (role === 'host') {
-          const credentials = access.credentials(typeof message.session === 'string' ? message.session : undefined);
-          expiry = setTimeout(() => socket.close(CLOSE_SESSION_EXPIRED), credentials.sessionMs);
-          expiry.unref();
-          send(socket, { kind: 'ready', ...credentials });
-          send(socket, { kind: 'game', S: game.state(), ack: 0, hello: true });
-          initialPhotos(socket, game.photoIds());
-          send(socket, { kind: 'peers', judge: roles.judge.size });
-        } else {
-          send(socket, { kind: 'ready' });
-          if (role === 'judge') {
-            send(socket, { kind: 'peers', panel: 1 });
-            sendPeers();
-          }
-        }
-      } else if (role === 'host') fromHost(socket, message);
-      else fromPlayer(socket, message);
+      if (message?.kind !== 'auth') return socket.close(1008);
+      const auth = role === 'host' && message.key === undefined && message.session === undefined
+        ? { session: access.requestSession(request) } : message;
+      const room = /^[a-f0-9]{32}$/.test(id || '') && catalog?.game(id);
+      if (role === 'screen' && !room?.tournamentId) return socket.close(CLOSE_NO_ROOM);
+      const rooms = room && role !== 'host' ? readState(id)?.judge : null;
+      const refused = access.refuse(role, auth, clientAddress(request), rooms ? { rooms: () => rooms } : null);
+      if (refused || !room || (role === 'host' && !room.tournamentId)) return socket.close(refused || CLOSE_NO_ROOM);
+      channelFor(room).connected(socket, role, auth);
     } catch (error) {
-      if (!socket.role) {
-        socket.close(1011);
-        return;
-      }
-      console.error('Сообщение не обработано:', error.message);
-      send(socket, { kind: 'error', error: 'Не удалось обработать изменение.' });
+      console.error('Не удалось открыть игровое подключение:', error.message);
+      socket.close(1011);
     }
   });
 }
 
 const server = http.createServer((req, res) => {
-  if (req.method !== 'GET') return res.writeHead(404).end();
   const pathname = req.url.split('?')[0];
-  if (pathname === '/panel' && !SECRET) return res.writeHead(404).end();
-  const name = Object.hasOwn(PAGES, pathname) ? PAGES[pathname]
-    : Object.hasOwn(ASSETS, pathname) ? ASSETS[pathname] : null;
+  if (pathname.startsWith('/api/')) return void platform(req, res, pathname);
+  if (req.method !== 'GET') return res.writeHead(404).end();
+  const game = GAME_ROUTE.exec(pathname);
+  const tournament = TOURNAMENT_ROUTE.exec(pathname);
+  const watchGame = WATCH_GAME_ROUTE.exec(pathname);
+  const asset = pathname.startsWith('/assets/') ? pathname.slice('/assets/'.length) : '';
+  let name;
+  if (ASSETS.has(asset)) name = asset;
+  else if (pathname === '/' || APP_ROUTE.test(pathname)) name = 'platform.html';
+  else if (tournament && (!tournament[2] || catalog?.game(tournament[2])?.tournamentId === tournament[1])) name = 'platform.html';
+  else if (watchGame && catalog?.game(watchGame[1])?.tournamentId) name = 'platform.html';
+  else if (catalog && STREAM_ROUTE.test(pathname)) name = 'platform-stream.html';
+  else if (game) {
+    const entry = catalog?.game(game[1]);
+    if (entry) {
+      if (game[2] === 'judge') name = 'judge.html';
+      else if (entry.tournamentId) name = 'mafia-hud.html';
+      else if (!game[2] || game[2] === 'panel') name = 'platform.html';
+    }
+  }
   if (!name) return res.writeHead(404).end();
-  const file = path.join(CLIENT_DIR, name);
-  if (!fs.existsSync(file)) return res.writeHead(404).end();
-  const mime = name.endsWith('.js') ? 'text/javascript'
-    : name.endsWith('.css') ? 'text/css' : 'text/html';
+  const mime = name.endsWith('.js') ? 'text/javascript' : name.endsWith('.css') ? 'text/css' : 'text/html';
   res.writeHead(200, {
     'content-type': mime + '; charset=utf-8',
     'cache-control': 'no-store',
     'referrer-policy': 'no-referrer',
     'x-content-type-options': 'nosniff',
   });
-  fs.createReadStream(file).on('error', error => res.destroy(error)).pipe(res);
+  fs.createReadStream(path.join(CLIENT_DIR, name)).on('error', error => res.destroy(error)).pipe(res);
 });
 
 attachTransport(server, clientAddress, connected);
-scheduleSpeechEnd();
-server.on('close', () => clearTimeout(speechEnd));
-server.listen(PORT, BIND_HOST, () => console.log(`Сервер судьи запущен: http://${BIND_HOST}:${PORT}`));
+const cleanup = setInterval(() => {
+  const now = Date.now();
+  for (const [id, channel] of channels) {
+    if (channel.idle(now)) {
+      channel.close();
+      channels.delete(id);
+    }
+  }
+}, 30000).unref();
+server.on('close', () => {
+  clearInterval(cleanup);
+  for (const channel of channels.values()) channel.close();
+  catalog?.close();
+});
+server.listen(PORT, BIND_HOST, () => console.log(`Сервер мафии запущен: http://${BIND_HOST}:${PORT}`));

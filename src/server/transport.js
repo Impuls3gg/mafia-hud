@@ -74,4 +74,4 @@ function attachTransport(server, addressFor, onConnection) {
   server.on('close', () => clearInterval(heartbeat));
 }
 
-module.exports = { attachTransport, send };
+module.exports = { attachTransport, send, sameOrigin };
