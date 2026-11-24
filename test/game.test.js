@@ -16,7 +16,7 @@ function fixture(t) {
     for (const connection of connections.reverse()) connection.close();
     fs.rmSync(dir, { recursive: true, force: true });
   });
-  return { game: () => track(createGame(dir, rules)), db: () => track(new DatabaseSync(path.join(dir, 'hud.sqlite'))) };
+  return { game: options => track(createGame(dir, rules, options)), db: () => track(new DatabaseSync(path.join(dir, 'hud.sqlite'))) };
 }
 
 test('ошибка SQLite оставляет снимок, ревизию и фотографии на месте', t => {
@@ -60,6 +60,55 @@ test('неверное поле или конфликт отклоняет ве�
   const owner = game.state().seats[1].pid;
   assert.ok(game.patch([[['seats', '0', 'role'], 'don', { value: '', owner }]]).error);
   assert.equal(game.state().seats[0].role, '');
+});
+
+test('после перестановки в рейтинговой игре протокол и таймер остаются у своих игроков', t => {
+  const files = fixture(t);
+  const game = files.game({ judgeSeating: true });
+  game.open();
+  const player = game.state().seats[0].pid;
+  const endAt = Date.now() + 60000;
+  assert.equal(game.patch([
+    [['seats', '0', 'role'], 'don'],
+    [['seats', '0', 'fouls'], 2],
+    [['seats', '0', 'bonus'], .5],
+    [['nights'], [{ shot: '1', check: '0', don: '2' }]],
+    [['days'], [{ opener: 0, noms: [{ i: '1', v: 1, voters: ['0'] }], revote: [{ i: '1', v: 1, voters: ['2'] }],
+      out: ['1'], stage: 'done' }, { opener: 2, noms: [], correction: { noms: [{ i: '0', v: 1, voters: ['2'] }] } }]],
+    [['timer'], { running: true, endAt, left: 60000, total: 60000, speaker: '0', restartSpeaker: '2', nominated: ['1'] }],
+    [['lh'], ['0', '2', '']],
+    [['lhPu'], '1'],
+    [['lhExtra'], { pu: '2', seats: ['0', '1'] }],
+    [['deathReports'], [{ i: '1', manual: false, red: ['2'], black: ['0'], sheriff: '2' }]],
+    [['winner'], 'red'],
+  ]).error, null);
+  const { names, version } = game.judgeState().seating;
+  names.splice(0, 3, names[1], names[2], names[0]);
+  assert.deepEqual(game.seatParticipants({ names, version, shuffle: false }), { error: null, changed: true });
+  const state = files.game({ judgeSeating: true }).state();
+  assert.equal(state.seats[2].pid, player);
+  assert.equal(state.seats[2].role, 'don');
+  assert.equal(state.seats[2].fouls, 2);
+  assert.equal(state.seats[2].bonus, .5);
+  assert.deepEqual(state.nights, [{ shot: '0', check: '2', don: '1' }]);
+  assert.deepEqual(state.days[0].noms, [{ i: '0', v: 1, voters: ['2'] }]);
+  assert.deepEqual(state.days[0].revote, [{ i: '0', v: 1, voters: ['1'] }]);
+  assert.deepEqual(state.days[0].out, ['0']);
+  assert.equal(state.days[0].opener, 2);
+  assert.deepEqual(state.days[1].correction.noms, [{ i: '2', v: 1, voters: ['1'] }]);
+  assert.deepEqual(state.lh, ['2', '1', '']);
+  assert.equal(state.lhPu, '0');
+  assert.deepEqual(state.lhExtra, { pu: '1', seats: ['2', '0'] });
+  assert.deepEqual(state.deathReports, [{ i: '0', manual: false, red: ['1'], black: ['2'], sheriff: '1' }]);
+  assert.deepEqual(state.timer, { running: true, endAt, left: 60000, total: 60000, speaker: '2', restartSpeaker: '1', nominated: ['0'] });
+  assert.equal(state.winner, 'red');
+
+  const current = game.judgeState().seating;
+  current.names[2] = 'Исправленный ник';
+  assert.deepEqual(game.seatParticipants({ ...current, shuffle: false }), { error: null, changed: true });
+  assert.equal(game.state().seats[2].pid, player);
+  assert.equal(game.judgeState().seats[2].nick, 'Исправленный ник');
+  assert.equal(game.judgeState().timer.speaker, '2');
 });
 
 test('исправление голосования возвращает только игроков, выбывших по этому результату', t => {
@@ -231,24 +280,29 @@ test('технические фолы удваивают второй штраф
   assert.equal(game.view().seats[3].status, 'removed');
 });
 
-test('общий таймер запускается на 10 или 20 секунд и снимает выделение говорящего', t => {
+test('общий таймер запускается на 10, 20 или 60 секунд и снимает выделение говорящего', t => {
   const game = fixture(t).game();
   game.open();
   const timer = (op, fields = {}) => game.command({ a: 'timer', op, ...fields });
+  assert.equal(game.judgeState().timer.countdown, false);
   assert.equal(timer('speak', { v: '0', ms: 60000 }), true);
+  assert.equal(game.judgeState().timer.countdown, false);
   assert.equal(timer('countdown', { ms: 15000 }), false);
-  for (const ms of [10000, 20000]) {
+  for (const ms of [10000, 20000, 60000]) {
     assert.equal(timer('countdown', { ms }), true);
     const running = game.judgeState().timer;
     assert.equal(running.running, true);
     assert.equal(running.total, ms);
     assert.equal(running.speaker, '');
+    assert.equal(running.countdown, true);
     assert.ok(running.remain > 0 && running.remain <= ms);
     assert.equal(timer('pause'), true);
     assert.equal(timer('stop'), true);
     assert.equal(game.judgeState().timer.remain, 0);
     assert.equal(timer('reset'), true);
     assert.equal(game.judgeState().timer.remain, ms);
+    assert.equal(timer('restart'), true);
+    assert.equal(game.judgeState().timer.countdown, true);
   }
 });
 

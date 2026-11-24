@@ -253,22 +253,9 @@ function startPanel({tournamentId}){
     selectMuGame(g);
     return muNote;
   }
-  // игра для протокола MafiaUniverse: места, роли, фолы, первый убиенный, лучший ход, победитель и заметка с голосованиями
-  const voteLines=()=>days().map((d,k)=>{
-    if(!d.noms.length)return '';
-    const list=l=>l.map(n=>(+n.i+1)+(n.v===''?'':' ('+n.v+')')).join(', ');
-    let t='День '+(k+1)+': '+list(d.noms);
-    if(d.revote&&d.revote.length)t+='; переголосование: '+list(d.revote);
-    if(stageOf(d)==='done')t+=d.out.length?' → стол покидает '+d.out.map(i=>+i+1).join(', '):' → оставили';
-    return t;
-  }).filter(Boolean);
   muExport=()=>{
-    const votes=voteLines(),notes=(S.notes||'').trim();
     muNote='Протокол отправлен на MafiaUniverse. Вернитесь на вкладку сайта, проверьте и сохраните.';renderFn();
-    return {game:S.mu&&S.mu.cur||'',pu:firstKilled(),lh:(Array.isArray(S.lh)?S.lh:[]).filter(Boolean),
-      winner:({red:1,black:2,draw:3})[S.winner]||(S.scene==='red'?1:S.scene==='black'?2:0),
-      seats:S.seats.map((s,i)=>{const p=person(s.pid);return {n:i+1,nick:p?(p.mu||p.nick):'',role:s.role||'',fouls:+s.fouls||0,b:scoreOf(s.bonus),p:scoreOf(s.pen),t:techPenalty(s)}}),
-      note:[notes,votes.length?'Голосования:\n'+votes.join('\n'):''].filter(Boolean).join('\n\n')};
+    return muExportData();
   };
   const showSt={game:'',results:''},showRequests={};
   let requestId=0;

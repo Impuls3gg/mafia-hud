@@ -76,9 +76,8 @@ function createChannel(game, access, scope, onChange) {
       sendView(socket, view, viewText);
     }
     let stateText;
-    const judgeTimerText = timerText && encode({ ...timerUpdate, seatingOpen: game.seatingOpen() });
     for (const socket of roles.judge) {
-      if (judgeTimerText && socket.timerUpdates) sendText(socket, judgeTimerText);
+      if (timerText && socket.timerUpdates) sendText(socket, timerText);
       else sendText(socket, stateText ??= judgeText());
     }
     for (const socket of roles.host) send(socket, { kind: 'game', S: game.state(), ack: socket.seq });
@@ -168,6 +167,10 @@ function createChannel(game, access, scope, onChange) {
       if (message.kind === 'hello') {
         socket.timerUpdates = message.timerUpdates === true;
         sendText(socket, judgeText());
+      }
+      else if (message.kind === 'muExport') {
+        if (!Number.isSafeInteger(message.request) || message.request < 1) return;
+        send(socket, { kind: 'muExport', request: message.request, protocol: game.exportProtocol() });
       }
       else if (message.kind === 'seating') {
         if (!Number.isSafeInteger(message.request) || message.request < 1) return;

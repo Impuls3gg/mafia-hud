@@ -165,7 +165,9 @@ function dayMsg(d,archive){
   };
 }
 const timerOf=()=>S.timer&&typeof S.timer==='object'?S.timer:protocolDefaults().timer;
-const isShortCountdown=ms=>ms===10000||ms===20000;
+const COUNTDOWN_DURATIONS=[10000,20000,SPEECH_MS];
+// В старых снимках общий отсчёт на 10 или 20 секунд хранится без признака режима.
+const isCountdownTimer=t=>t.countdown??(!t.speaker&&!t.restartSpeaker&&(t.total===10000||t.total===20000));
 function timerLeft(now=Date.now()){const t=timerOf();return t.running?Math.max(0,t.endAt-now):Math.max(0,+t.left||0)}
 function nominationWarning(c){
   if(!Number.isInteger(c.i)||!S.seats[c.i])return null;
@@ -188,11 +190,33 @@ function finishSpeech(timer){
 }
 // первый убиенный: тот, у кого судья записал лучший ход, а пока не записал — отстрел первой ночи
 const firstKilled=()=>(typeof S.lhPu==='string'&&S.lhPu)||(S.nights[0]&&S.nights[0].shot)||'';
+function muExportData(){
+  const list=entries=>entries.map(n=>(+n.i+1)+(n.v===''?'':' ('+n.v+')')).join(', ');
+  const votes=days().flatMap((day,index)=>{
+    if(!day.noms.length)return [];
+    let line='День '+(index+1)+': '+list(day.noms);
+    if(day.revote?.length)line+='; переголосование: '+list(day.revote);
+    const out=day.out||[];
+    if(stageOf(day)==='done')line+=out.length?' → стол покидает '+out.map(i=>+i+1).join(', '):' → оставили';
+    return [line];
+  });
+  const roster=new Map(S.roster.map(player=>[player.id,player]));
+  return {
+    game:S.mu?.cur||'',pu:firstKilled(),lh:Array.isArray(S.lh)?S.lh.filter(Boolean):[],
+    winner:({red:1,black:2,draw:3})[S.winner]||(S.scene==='red'?1:S.scene==='black'?2:0),
+    seats:S.seats.map((seat,index)=>{
+      const player=roster.get(seat.pid);
+      return {n:index+1,nick:player?.mu||player?.nick||'',role:seat.role||'',fouls:+seat.fouls||0,
+        b:scoreOf(seat.bonus),p:scoreOf(seat.pen),t:techPenalty(seat)};
+    }),
+    note:[(S.notes||'').trim(),votes.length?'Голосования:\n'+votes.join('\n'):''].filter(Boolean).join('\n\n')
+  };
+}
 const okSeat=v=>v===''||(/^\d+$/.test(v)&&!!S.seats[+v]);
 // таймер для экранов: сколько осталось на момент отправки, дальше экран считает сам
 function timerView(){
   const t=timerOf(),sentAt=Date.now(),remain=timerLeft(sentAt),running=remain>0&&!!t.running;
-  return {running,remain,total:+t.total||SPEECH_MS,speaker:remain>0?t.speaker||'':'',restartSpeaker:t.speaker||t.restartSpeaker||'',sentAt,endAt:running?t.endAt:0};
+  return {running,remain,total:+t.total||SPEECH_MS,speaker:remain>0?t.speaker||'':'',restartSpeaker:t.speaker||t.restartSpeaker||'',countdown:isCountdownTimer(t),sentAt,endAt:running?t.endAt:0};
 }
 function normalState(s){return {...defaultState(),...s,ui:{...UI_DEF,...s.ui}}}
 function waitLeft(){const w=S.wait;return w.running?Math.max(0,w.endAt-Date.now()):Math.max(0,w.left)}
@@ -408,11 +432,12 @@ const J={
       S.timer=newRunningTimer(c.ms??t.total,v,c.startedAt,now);
       S.timer.running=v!=='';
     }
-    else if(c.op==='countdown'&&isShortCountdown(c.ms)){
-      S.timer=newRunningTimer(c.ms,'',c.startedAt,now);
+    else if(c.op==='countdown'&&COUNTDOWN_DURATIONS.includes(c.ms)){
+      S.timer={...newRunningTimer(c.ms,'',c.startedAt,now),countdown:true};
     }
     else if(c.op==='restart'){
       S.timer=newRunningTimer(t.total,t.speaker||t.restartSpeaker||'',c.startedAt,now);
+      if(isCountdownTimer(t))S.timer.countdown=true;
       if(t.nominated?.length)S.timer.nominated=t.nominated;
     }
     else if(c.op==='extra'){
@@ -425,7 +450,7 @@ const J={
     }
     else if(c.op==='start'){if(!t.running&&timerLeft()>0){t.endAt=now+timerLeft();t.running=true}}
     else if(c.op==='pause'){if(t.running&&timerLeft(now)>0){t.left=timerLeft(now);t.running=false}}
-    else if(c.op==='stop'){if(t.running||t.speaker!==''||(isShortCountdown(t.total)&&timerLeft(now)>0))S.timer=finishSpeech(t)}
+    else if(c.op==='stop'){if(t.running||t.speaker!==''||(isCountdownTimer(t)&&timerLeft(now)>0))S.timer=finishSpeech(t)}
     else if(c.op==='reset'){t.running=false;t.left=t.total}
     else if(c.op==='set'&&Number.isInteger(c.ms)&&c.ms>=5000&&c.ms<=600000){t.total=c.ms;t.left=c.ms;t.running=false}
   },

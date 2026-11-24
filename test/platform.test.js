@@ -414,12 +414,23 @@ test('судья заполняет и перемешивает места в р
   another.ws.send(JSON.stringify({ kind: 'seating', names, version: oldVersion, shuffle: false, request: 1 }));
   assert.ok(await until(() => latest(another, 'seatingResult')?.error?.includes('изменилась')));
   assert.equal((await body(await admin('/games/' + solo.id))).seats[0].nick, 'Борис');
+  cmd(another, 'role', { i: 0, v: 'sheriff' });
   await page.run("document.querySelector('.speech-actions button').click()");
-  assert.ok(await until(() => page.run("document.querySelector('#seating').hidden")));
   assert.ok(await until(() => latest(another, 'state').timer.speaker === '0'));
-  const fresh = latest(another, 'state').seating.version;
-  another.ws.send(JSON.stringify({ kind: 'seating', names, version: fresh, shuffle: false, request: 2 }));
-  assert.ok(await until(() => latest(another, 'seatingResult')?.request === 2 && latest(another, 'seatingResult').error.includes('началась')));
+  assert.equal(await page.run("document.getElementById('seating').open && !document.getElementById('seatingSave').disabled"), true);
+  await page.run(`(() => {
+    const inputs=document.querySelectorAll('#seatingFields input');
+    inputs[0].value='Алиса';inputs[2].value='Борис';
+    inputs[2].dispatchEvent(new Event('input',{bubbles:true}));
+    document.getElementById('seatingSave').click();
+  })()`);
+  assert.ok(await until(() => page.run("document.getElementById('seatingNotice').textContent==='Рассадка сохранена.'")));
+  assert.ok(await until(() => latest(another, 'state').timer.speaker === '2'));
+  assert.equal(latest(another, 'state').seats[2].role, 'sheriff');
+  assert.deepEqual((await body(await admin('/games/' + solo.id))).seats.map(seat => [seat.no, seat.nick]), [[1, 'Алиса'], [3, 'Борис']]);
+  await page.run('location.reload()');
+  assert.ok(await until(() => page.run("document.getElementById('seating')?.hidden===false && document.getElementById('seatingSave')?.disabled===false")));
+  assert.equal(await page.run("document.querySelector('#seatingFields input').value"), 'Алиса');
 
   const tournament = await body(await admin('/tournaments', 'POST', { title: 'Турнир' }), 201);
   const path = '/tournaments/' + tournament.id + '/participants';

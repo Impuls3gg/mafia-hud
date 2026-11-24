@@ -4,7 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { test } = require('node:test');
 const { DatabaseSync } = require('node:sqlite');
-const { sleep, room, tempData, startServer, signIn, connect, until, hostSend, findChrome, openPage } = require('./helpers');
+const { sleep, room, tempData, startServer, signIn, seedSeating, connect, until, hostSend, findChrome, openPage } = require('./helpers');
 
 const skip = findChrome() ? false : 'нужен Chrome: укажите путь в CHROME_PATH';
 const SECRET = 'correct-horse';
@@ -402,6 +402,7 @@ test('таймеры на 60, 30 и 20 секунд показывают пол�
     ['.speech-actions button', 60000, '0'],
     ['.speech-actions button:nth-child(2)', 30000, '0'],
     ['[data-countdown="20000"]', 20000, ''],
+    ['[data-countdown="60000"]', 60000, ''],
   ]) {
     const started = await page.run(`(() => {
       window.timerConfirmation=null;
@@ -443,8 +444,8 @@ test('судья запускает короткий отсчёт, начисл�
   assert.ok(await until(() => page.run(`!!${overlay}.querySelector('.spk.on')`)));
   assert.equal(await page.run(`${doc}.getElementById('notes').nextElementSibling.textContent`), 'Результат игры');
   assert.equal(await page.run(`${doc}.querySelector('main').lastElementChild.id`), 'winner');
-  assert.deepEqual(await page.run(`[...${doc}.querySelectorAll('#tReset ~ button')].map(b=>b.textContent)`), ['10 с', '20 с']);
-  for (const ms of [10000, 20000]) {
+  assert.deepEqual(await page.run(`[...${doc}.querySelectorAll('#tReset ~ button')].map(b=>b.textContent)`), ['10 с', '20 с', '60 с']);
+  for (const ms of [10000, 20000, 60000]) {
     await page.run(`${doc}.querySelector('[data-countdown="${ms}"]').click()`);
     assert.ok(await until(() => view(screen)?.timer.total === ms && view(screen)?.timer.running));
     assert.equal(view(screen).timer.speaker, '');
@@ -457,8 +458,8 @@ test('судья запускает короткий отсчёт, начисл�
     const judge=${doc};
     judge.getElementById('tReset').click();
     return judge.getElementById('clock').textContent;
-  })()`), '0:20');
-  assert.ok(await until(() => view(screen).timer.running && view(screen).timer.total === 20000 && view(screen).timer.speaker === ''));
+  })()`), '1:00');
+  assert.ok(await until(() => view(screen).timer.running && view(screen).timer.total === 60000 && view(screen).timer.speaker === ''));
   assert.equal(await page.run(`!${overlay}.querySelector('.spk.on, .tile.speak')`), true);
   send({ kind: 'patch', seq: 1, ops: [[['timer', 'endAt'], Date.now() + 200]] });
   assert.ok(await until(() => !view(screen).timer.running && view(screen).timer.remain === 0));
@@ -1026,13 +1027,97 @@ test('рассадка из MafiaUniverse открывается и сохран
 
 // Повторяет форму редактирования игры на MafiaUniverse (/Games/Edit/...): только поля, которые заполняет закладка.
 const muFormRow = (k, nick) => `<tr><td><input type="hidden" id="GamePlayers_${k}__Position" name="GamePlayers[${k}].Position" value="${k + 1}"></td>
-  <td><input class="GamePlayers_Player_Name" value="${nick}"></td>
+  <td><input class="GamePlayers_Player_Name" value="${nick}"><input type="hidden" id="GamePlayers_${k}__PlayerId" name="GamePlayers[${k}].PlayerId" value="${701 + k}"></td>
   <td><span class="hasfoul"></span><input type="hidden" id="GamePlayers_${k}__Foul" name="GamePlayers[${k}].Foul" value="0"></td>
   <td><input type="hidden" class="playerkilledfirst" id="GamePlayers_${k}__KilledFirst" name="GamePlayers[${k}].KilledFirst" value="False"><input style="display:none" class="bestMoveInput" id="GamePlayers_${k}__BestMove" name="GamePlayers[${k}].BestMove" value=""></td>
   <td><select id="GamePlayers_${k}__GameRoleId" name="GamePlayers[${k}].GameRoleId"><option value="1">Мирный</option><option value="2">Шериф</option><option value="3">Мафия</option><option value="4">Дон</option></select></td>
   <td><input id="GamePlayers_${k}__BonusScore" value="0,00"><input id="GamePlayers_${k}__PenaltyScore" value="0,00"><input id="GamePlayers_${k}__TechPenaltyScore" value="0,00"></td></tr>`;
 const MU_FORM = `<!doctype html><form id="gameForm"><select id="GameWinnerId"><option value="0"></option><option value="1">Мирные</option><option value="2">Мафия</option><option value="3">Ничья</option></select>
   <table>${Array.from({ length: 10 }, (_, k) => muFormRow(k, k === 3 ? 'Чужой' : `Игрок ${k + 1}`)).join('')}</table><textarea id="Note">Заметка с сайта</textarea></form>`;
+
+test('судья рейтинговой игры экспортирует протокол в MU без пульта', { skip }, async t => {
+  const server = await startServer(t, SECRET, undefined, undefined, false);
+  const admin = await signIn(server.http, SECRET);
+  const rating = await admin('/ratings', 'POST', { title: 'Рейтинг для экспорта' }).then(response => response.json());
+  const game = await admin('/ratings/' + rating.id + '/games', 'POST', {}).then(response => response.json());
+  const details = await admin('/games/' + game.id).then(response => response.json());
+  await seedSeating(t, server, details);
+  const page = await openPage(t, server.http + details.links.judge);
+  assert.ok(await until(() => page.run("document.getElementById('exportMu')?.disabled===false"), 20000));
+  await page.run(`(() => {
+    send({a:'role',i:1,v:'sheriff'});
+    send({a:'role',i:3,v:'mafia'});
+    send({a:'foul',i:0,d:1});
+    send({a:'score',i:1,f:'b',v:0.5});
+    send({a:'score',i:3,f:'p',v:0.2});
+    send({a:'night',k:0,f:'shot',v:'2'});
+    send({a:'lhset',i:2,v:['4','6','8']});
+    send({a:'nom',i:4});
+    send({a:'voteEnd'});
+    send({a:'notes',v:'Заметка судьи'});
+    send({a:'winner',v:'red'});
+  })()`);
+  assert.ok(await until(() => page.run("last?.winner==='red'")));
+  await page.run("document.getElementById('exportMu').click()");
+  assert.ok(await until(() => page.run("document.getElementById('muDialog').open && !document.getElementById('muExportActions').hidden")));
+  const result = await page.run(`(async () => {
+    const bookmark=document.getElementById('muBookmark').getAttribute('href');
+    const code=decodeURIComponent(bookmark.slice('javascript:'.length));
+    const run=new Function('document','location','confirm','alert','fetch','return '+code);
+    const doc=new DOMParser().parseFromString(${JSON.stringify(MU_FORM)},'text/html');
+    const win=doc.getElementById('GameWinnerId');
+    const names=doc.querySelectorAll('.GamePlayers_Player_Name');
+    const playerId=index=>doc.getElementById('GamePlayers_'+index+'__PlayerId').value;
+    const field=(i,name)=>doc.getElementById('GamePlayers_'+i+'__'+name).value;
+    names[0].value='';
+    doc.getElementById('GamePlayers_0__PlayerId').value='';
+    doc.getElementById('GamePlayers_3__PlayerId').value='999';
+    const mu={origin:'https://mafiauniverse.org',pathname:'/Games/Edit'};
+    const messages=[];
+    let warning='';
+    let missing=true;
+    const searches=[];
+    const lookup=async (path,options)=>{
+      if(path!=='/Players/Search/'||options.method!=='POST')throw new Error('Unexpected player search');
+      const term=options.body.get('term');
+      searches.push(term);
+      const suffix=Number(term.split(' ').at(-1));
+      const result=missing&&suffix===4?[]:[{id:701+suffix-1,label:term},{id:990,label:term+' другой'}];
+      return {ok:true,json:async()=>result};
+    };
+    await run(doc,{...mu,origin:'https://example.test'},()=>true,msg=>messages.push(msg),lookup);
+    const outside=win.value;
+    await run(doc,mu,msg=>{warning=msg;return false},msg=>messages.push(msg),lookup);
+    const cancelled=win.value;
+    await run(doc,mu,()=>true,msg=>messages.push(msg),lookup);
+    const partial={players:[names[0].value,playerId(0),names[3].value,playerId(3)],
+      winner:win.value,role:field(3,'GameRoleId'),penalty:field(3,'PenaltyScore'),notice:messages.at(-1)};
+    missing=false;
+    await run(doc,mu,()=>true,msg=>messages.push(msg),lookup);
+    return {outside,cancelled,warning,winner:win.value,secretInBookmark:code.includes(room),partial,searches,
+      players:[names[0].value,playerId(0),names[3].value,playerId(3)],
+      role:field(1,'GameRoleId'),bonus:field(1,'BonusScore'),foul:field(0,'Foul'),best:field(2,'BestMove'),
+      note:doc.getElementById('Note').value,notice:messages.at(-1)};
+  })()`);
+  assert.equal(result.secretInBookmark, false);
+  assert.equal(result.outside, '0');
+  assert.equal(result.cancelled, '0');
+  assert.match(result.warning, /Место 4/);
+  assert.deepEqual(result.partial.players, ['Игрок 1', '701', 'Чужой', '999']);
+  assert.equal(result.partial.winner, '1');
+  assert.equal(result.partial.role, '3');
+  assert.equal(result.partial.penalty, '0,20');
+  assert.match(result.partial.notice, /Пропущенные ники:[\s\S]*Игрок 4 — точное совпадение не найдено/);
+  assert.deepEqual(result.searches, ['Игрок 1', 'Игрок 4', 'Игрок 4']);
+  assert.deepEqual(result.players, ['Игрок 1', '701', 'Игрок 4', '704']);
+  assert.equal(result.winner, '1');
+  assert.equal(result.role, '2');
+  assert.equal(result.bonus, '0,50');
+  assert.equal(result.foul, '1');
+  assert.equal(result.best, '5,7,9');
+  assert.match(result.note, /Заметка судьи[\s\S]*Голосования/);
+  assert.match(result.notice, /Сохранить/);
+});
 
 test('экспорт на MafiaUniverse: закладка заполняет протокол игры', { skip }, async t => {
   const server = await startServer(t, SECRET);

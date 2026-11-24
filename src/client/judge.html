@@ -178,6 +178,13 @@ body.noroles .pr .rcell,body.noroles .res{display:none!important}
 .win3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
 .win3 button{min-height:44px;font-weight:600}
 .win3 .red.on{background:var(--red);border-color:var(--red);color:#fff}.win3 .black.on{background:#000;border-color:#fff;color:#fff}.win3 .draw.on{background:#5a5a62;border-color:#8a8a92;color:#fff}
+#exportMu{margin-top:8px}
+#muDialog{margin:auto;width:min(440px,calc(100% - 24px));padding:16px;background:var(--app-surface);color:var(--app-text);border:1px solid var(--line);border-radius:8px}
+#muDialog::backdrop{background:#000a}
+#muDialog h2,#muDialog p,#muDialog form,#muAddressBox{margin-bottom:10px}
+#muAddress{display:block;width:100%;margin-top:6px;padding:6px}
+.mu-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+#muBookmark{color:var(--app-blue);padding:6px;text-underline-offset:3px}
 /* ночи и лучший ход */
 .act{display:grid;grid-template-columns:60px minmax(0,1fr) 62px;align-items:center;gap:6px;margin-top:4px}
 .act span{font-size:14px;color:#a09d95}
@@ -230,6 +237,7 @@ textarea{width:100%;min-height:96px;padding:8px;resize:vertical}
       <button type="button" id="tReset" aria-label="Перезапустить таймер">⟳</button>
       <button type="button" data-countdown="10000" aria-label="Общий отсчёт на 10 секунд">10 с</button>
       <button type="button" data-countdown="20000" aria-label="Общий отсчёт на 20 секунд">20 с</button>
+      <button type="button" data-countdown="60000" aria-label="Общий отсчёт на 60 секунд">60 с</button>
       <div class="timer-options">
         <label class="hide"><input type="checkbox" id="hideRoles">Скрыть роли</label>
         <label class="hide"><input type="checkbox" id="namedVotes">Поимённые голоса</label>
@@ -282,10 +290,30 @@ textarea{width:100%;min-height:96px;padding:8px;resize:vertical}
   <h2>Заметки</h2>
   <textarea id="notes" placeholder="Заметки судьи к игре" aria-label="Заметки судьи"></textarea>
   <h2>Результат игры</h2>
-  <div class="card win3" id="winner"></div>
+  <div class="card" id="winner">
+    <div class="win3" id="winnerChoices"></div>
+    <button type="button" id="exportMu" disabled>Экспорт в MU</button>
+  </div>
   </main>
 </div>
+<dialog id="muDialog" aria-labelledby="muTitle">
+  <h2 id="muTitle">Экспорт в MafiaUniverse</h2>
+  <p id="muExportStatus" role="status"></p>
+  <div id="muExportActions" hidden>
+    <p>Перетащите ссылку на панель закладок или скопируйте её адрес. Запустите закладку на странице редактирования игры в MU, проверьте поля и сохраните игру.</p>
+    <div class="mu-actions">
+      <a id="muBookmark" href="#" draggable="true">Заполнить протокол MU</a>
+      <button type="button" id="muCopy">Копировать адрес закладки</button>
+    </div>
+    <details id="muAddressBox">
+      <summary>Адрес закладки</summary>
+      <textarea id="muAddress" rows="4" aria-label="Адрес закладки" readonly></textarea>
+    </details>
+  </div>
+  <form method="dialog"><button>Закрыть</button></form>
+</dialog>
 <script src="/assets/timer.js"></script>
+<script src="/assets/mu-export.js"></script>
 <script>
 const ROLES=[['','—'],['civ','Мир'],['sheriff','Шер'],['mafia','Маф'],['don','Дон']];
 const STATE={killed:n=>`убит, ночь ${n}`,voted:()=>'заголосован',removed:()=>'удалён'};
@@ -330,7 +358,7 @@ function seatingFeedback(text,error=false){
 }
 function drawSeating(){
   const seating=last.seating,box=$('seating');
-  box.hidden=!seating||seating.locked;
+  box.hidden=!seating;
   if(box.hidden)return;
   if(!seatingInitialized){
     seatingInitialized=true;box.open=seating.names.every(name=>!name);
@@ -354,7 +382,7 @@ $('seatingForm').oninput=()=>{
 $('seatingReload').onclick=()=>{seatingDirty=false;seatingFeedback('');drawSeating()};
 $('seatingForm').onsubmit=event=>{
   event.preventDefault();
-  if(seatingPending||$('seating').hidden)return;
+  if(seatingPending||!last?.seating)return;
   const shuffle=event.submitter?.id==='seatingShuffle',request=++seatingRequest;
   const names=seatingInputs.map(input=>input.value.trim());
   if(shuffle&&names.filter(Boolean).length<2){seatingFeedback('Для перемешивания нужны хотя бы два участника.',true);return}
@@ -395,12 +423,13 @@ function startTimer(ms,speaker='',op=speaker===''?'countdown':'speak'){
   const now=performance.now(),request=++startRequest;
   const startedAt=timerClock.serverTimeAt(now);
   if(!send({a:'timer',op,v:speaker,ms,startedAt,request}))return;
-  pendingStart={request,localDeadline:now+ms,running:true,total:ms,speaker};
+  const countdown=op==='countdown'||(op==='restart'&&shownTimer()?.countdown);
+  pendingStart={request,localDeadline:now+ms,running:true,total:ms,speaker,countdown};
   timerDisplay.show(ms);
   drawTimerUpdate();
 }
 countdownButtons.forEach(b=>{b.onclick=()=>startTimer(+b.dataset.countdown)});
-const hasCountdown=()=>left()>0&&countdownButtons.some(b=>+b.dataset.countdown===shownTimer().total);
+const hasCountdown=()=>left()>0&&shownTimer().countdown;
 // скрытые роли — настройка этого телефона, чтобы роли не подсмотрели из-за плеча
 const applyHide=()=>document.body.classList.toggle('noroles',$('hideRoles').checked);
 $('hideRoles').onchange=()=>{applyHide();draw()};
@@ -762,9 +791,35 @@ function nightAction(k,f,label,value,result){
 }
 // победа как на MafiaUniverse: мирные, мафия или ничья; повторное нажатие снимает
 function drawWinner(){
-  const box=$('winner');box.textContent='';
+  const box=$('winnerChoices');box.textContent='';
   [['red','Мирные'],['black','Мафия'],['draw','Ничья']].forEach(([v,t])=>box.append(btn(t,{a:'winner',v:last.winner===v?'':v},{cls:v,on:last.winner===v,label:'Победа: '+t})));
+  $('exportMu').disabled=!panelOn||!last.seats.some(seat=>seat.nick);
 }
+let muRequest=0,muPending=null;
+const muDialog=$('muDialog'),muStatus=$('muExportStatus'),muAddress=$('muAddress'),muBookmark=$('muBookmark');
+$('exportMu').onclick=()=>{
+  const request=++muRequest;
+  $('muExportActions').hidden=true;
+  $('muAddressBox').open=false;
+  muAddress.value='';
+  muBookmark.removeAttribute('href');
+  muDialog.showModal();
+  muPending=send({kind:'muExport',request})?request:null;
+  muStatus.textContent=muPending?'Подготавливаем протокол…':'Связь с сервером потеряна. Повторите после подключения.';
+};
+muDialog.addEventListener('close',()=>{muPending=null});
+muBookmark.onclick=event=>event.preventDefault();
+$('muCopy').onclick=async()=>{
+  try{
+    await navigator.clipboard.writeText(muAddress.value);
+    muStatus.textContent='Адрес скопирован. Вставьте его в поле URL новой закладки.';
+  }catch{
+    $('muAddressBox').open=true;
+    muAddress.focus();
+    muAddress.select();
+    muStatus.textContent='Скопируйте выделенный адрес из поля и вставьте его в поле URL новой закладки.';
+  }
+};
 const wideLayout=matchMedia('(min-width:1180px)');
 function openSidePanels(){
   $('nightPanel').open=wideLayout.matches;
@@ -940,6 +995,12 @@ function connect(){
       if(!m.error){seatingDirty=false;seatingVersion=undefined}
       drawSeating();
       seatingFeedback(m.error||(shuffle?'Рассадка перемешана.':'Рассадка сохранена.'),Boolean(m.error));
+    }else if(m.kind==='muExport'&&m.request===muPending&&muDialog.open){
+      muPending=null;
+      muAddress.value=muSnapshotBookmarklet(m.protocol);
+      muBookmark.setAttribute('href',muAddress.value);
+      $('muExportActions').hidden=false;
+      muStatus.textContent='Протокол подготовлен. После исправлений в игре создайте новую закладку.';
     }else if(m.kind==='nominationConfirm'&&last){
       const {i,speaker,nominee}=m;
       if(confirm(`Игрок ${who([speaker])} уже выставил игрока ${who([nominee])}. Выставить игрока ${who([i])}?`)){
@@ -950,9 +1011,6 @@ function connect(){
     }else if(m.kind==='timer'&&last){
       syncTimer(m.timer);last.timer=m.timer;
       if(m.foul)updateFouls(m.foul);
-      if(last.seating&&typeof m.seatingOpen==='boolean'){
-        last.seating.locked=!m.seatingOpen;drawSeating();
-      }
       drawTimerUpdate();
     }else if(m.kind==='state'){
       if(panelOn)setConn('ok','На связи');
@@ -963,7 +1021,11 @@ function connect(){
       syncTimer(m.timer);last=m;draw();
     }
   };
-  ws.onclose=e=>{panelOn=false;pendingStart=null;seatingPending=null;timerDisplay.clear();setConn('bad',e.code===4403?'Ссылка недействительна':'Нет связи, переподключаюсь…');draw();setTimeout(connect,2000)};
+  ws.onclose=e=>{
+    panelOn=false;pendingStart=null;seatingPending=null;timerDisplay.clear();
+    if(muPending){muPending=null;muStatus.textContent='Связь с сервером потеряна. Повторите после подключения.'}
+    setConn('bad',e.code===4403?'Ссылка недействительна':'Нет связи, переподключаюсь…');draw();setTimeout(connect,2000)
+  };
 }
 if(/^[a-f0-9]{32}$/.test(room))connect();
 else{setConn('bad','Неверная ссылка');$('msg').textContent='Откройте игру из списка или используйте ссылку судьи.'}

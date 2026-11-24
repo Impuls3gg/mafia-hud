@@ -46,7 +46,7 @@ function timer(value, speech) {
     total: v => integer(v, speech ? 600000 : 86400000) && v > 0,
     left: v => integer(v, 86400000),
     [speech ? 'speaker' : 'show']: speech ? maybeSeat : v => typeof v === 'boolean',
-    ...(speech ? { restartSpeaker: optional(maybeSeat), nominated: optional(uniqueSeats) } : {}),
+    ...(speech ? { restartSpeaker: optional(maybeSeat), nominated: optional(uniqueSeats), countdown: optional(v => typeof v === 'boolean') } : {}),
   });
 }
 

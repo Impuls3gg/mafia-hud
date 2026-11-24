@@ -22,7 +22,7 @@ const APP_ROUTE = /^\/(?:ratings(?:\/[a-f0-9]{32})?\/?|watch\/tournaments\/[a-f0
 const TOURNAMENT_ROUTE = /^\/tournaments(?:\/([a-f0-9]{32})(?:\/(?:games(?:\/([a-f0-9]{32}))?|standings|participants|admin|operator|design|streams))?)?\/?$/;
 const WATCH_GAME_ROUTE = /^\/watch\/games\/([a-f0-9]{32})$/;
 const STREAM_ROUTE = /^\/stream\/[a-f0-9]{32}\/\d{1,4}$/;
-const ASSETS = new Set(['style.css', 'rules.js', 'client.js', 'operator-tools.js', 'state.js', 'timer.js', 'screen.js', 'panel.js',
+const ASSETS = new Set(['style.css', 'rules.js', 'client.js', 'operator-tools.js', 'mu-export.js', 'state.js', 'timer.js', 'screen.js', 'panel.js',
   'app-theme.css', 'platform.css', 'platform.js', 'tournament-admin.js', 'platform-stream.js']);
 const catalog = SECRET ? openCatalog(DATA_DIR) : null;
 const access = createAccess(SECRET);

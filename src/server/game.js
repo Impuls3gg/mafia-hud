@@ -43,6 +43,62 @@ function withTournamentSeating(state, placement) {
   return { ...state, roster: [...roster.values()], seats, tournamentSeatingRevision: placement.revision };
 }
 
+function preserveSeatingProtocol(state, seats) {
+  const previous = new Map(state.seats.flatMap(({ pid }, i) => pid ? [[pid, i]] : []));
+  const sources = seats.map(pid => previous.get(pid));
+  const used = new Set(sources.filter(i => i !== undefined));
+  for (const [index, source] of sources.entries()) {
+    if (source !== undefined || used.has(index)) continue;
+    sources[index] = index;
+    used.add(index);
+  }
+  const unused = state.seats.map((_, index) => index).filter(index => !used.has(index));
+  const newIndex = [];
+  state.seats = sources.map((source, index) => {
+    const from = source ?? unused.shift();
+    newIndex[from] = index;
+    return { ...state.seats[from], pid: seats[index] };
+  });
+  if (newIndex.every((index, previous) => index === previous)) return;
+  const position = index => index === '' ? '' : String(newIndex[+index]);
+  const remap = (entry, keys) => {
+    for (const key of keys) if (entry[key] !== undefined) entry[key] = position(entry[key]);
+  };
+  const remapLists = (entry, keys) => {
+    for (const key of keys) if (entry[key]) entry[key] = entry[key].map(position);
+  };
+  const remapBallot = ballot => {
+    for (const entry of ballot ?? []) {
+      entry.i = position(entry.i);
+      remapLists(entry, ['voters']);
+    }
+  };
+  function remapDay(day) {
+    remapBallot(day.noms);
+    remapBallot(day.revote);
+    remapBallot(day.mainReview?.noms);
+    remapLists(day, ['tied', 'out', 'voteSeats', 'revoteSeats', 'changed']);
+  }
+  for (const day of state.days) {
+    remapDay(day);
+    if (day.correction) remapDay(day.correction);
+    if (day.opener !== undefined) day.opener = newIndex[day.opener];
+  }
+  for (const night of state.nights) remap(night, ['shot', 'check', 'don']);
+  remap(state.timer, ['speaker', 'restartSpeaker']);
+  remapLists(state.timer, ['nominated']);
+  remap(state, ['lhPu']);
+  remapLists(state, ['lh']);
+  if (state.lhExtra) {
+    remap(state.lhExtra, ['pu']);
+    remapLists(state.lhExtra, ['seats']);
+  }
+  for (const report of state.deathReports ?? []) {
+    remap(report, ['i', 'sheriff']);
+    remapLists(report, ['red', 'black']);
+  }
+}
+
 function createGame(dir, rulesFile, { judgeSeating = false, fixedGameNumber = null, tournament } = {}) {
   const storage = openStorage(dir);
   const rules = vm.createContext({ S: null, photos: storage.photos() });
@@ -105,7 +161,7 @@ function createGame(dir, rulesFile, { judgeSeating = false, fixedGameNumber = nu
     return Object.keys(rules.photos).filter(key => removed.has(key.split('.')[0]));
   }
 
-  function seatingLocked() {
+  function hasActivity() {
     const state = rules.S;
     return Boolean(state.winner || state.timer.speaker || state.timer.restartSpeaker ||
       state.days.length > 1 || state.days.some(day => day.noms.length || day.out?.length) ||
@@ -119,13 +175,12 @@ function createGame(dir, rulesFile, { judgeSeating = false, fixedGameNumber = nu
     const roster = new Map(state.roster.map(player => [player.id, player.nick]));
     const names = state.seats.map(seat => roster.get(seat.pid) ?? '');
     const version = crypto.createHash('sha256').update(JSON.stringify(state.seats.map((seat, i) => [seat.pid, names[i]]))).digest('hex');
-    return { names, version, locked: seatingLocked() };
+    return { names, version };
   }
 
   function seatParticipants({ names, version, shuffle }) {
     if (!judgeSeating) return { error: 'Рассадку турнира задаёт организатор.' };
     const previous = currentSeating();
-    if (previous.locked) return { error: 'Игра уже началась. Рассадку можно менять до начала игры.' };
     if (version !== previous.version) return { error: 'Рассадка изменилась. Загрузите текущие места и повторите.' };
     if (typeof shuffle !== 'boolean' || !Array.isArray(names) || names.length !== previous.names.length ||
         names.some(name => typeof name !== 'string' || name.length > 256)) {
@@ -135,18 +190,34 @@ function createGame(dir, rulesFile, { judgeSeating = false, fixedGameNumber = nu
     if (shuffle && names.filter(Boolean).length < 2) return { error: 'Для перемешивания нужны хотя бы два участника.' };
 
     const candidate = structuredClone(rules.S);
+    const active = hasActivity();
     // Сначала закрепляем игроков, которые остались на месте, затем ищем остальных по нику.
     const seats = names.map((name, i) => name && name === previous.names[i] ? candidate.seats[i].pid : '');
     const assigned = new Set(seats.filter(Boolean));
     const byName = new Map();
+    const players = new Map(candidate.roster.map(player => [player.id, player]));
+    const occupiedIds = new Set(candidate.seats.map(seat => seat.pid));
     for (const player of candidate.roster) {
       if (!byName.has(player.nick)) byName.set(player.nick, []);
-      byName.get(player.nick).push(player.id);
+      const list = byName.get(player.nick);
+      if (occupiedIds.has(player.id)) list.unshift(player.id);
+      else list.push(player.id);
     }
     names.forEach((nick, i) => {
       if (!nick || seats[i]) return;
-      let pid = byName.get(nick)?.find(id => !assigned.has(id));
-      if (!pid) {
+      const pid = byName.get(nick)?.find(id => !assigned.has(id));
+      if (!pid) return;
+      assigned.add(pid);
+      seats[i] = pid;
+    });
+    let renamed = false;
+    names.forEach((nick, i) => {
+      if (!nick || seats[i]) return;
+      let pid = active && candidate.seats[i].pid;
+      if (pid && !assigned.has(pid)) {
+        players.get(pid).nick = nick;
+        renamed = true;
+      } else {
         pid = 'p' + newRoom();
         candidate.roster.push({ id: pid, nick });
       }
@@ -165,8 +236,9 @@ function createGame(dir, rulesFile, { judgeSeating = false, fixedGameNumber = nu
       let next = 0;
       for (const [i, pid] of seats.entries()) if (pid) seats[i] = occupied[next++];
     }
-    if (seats.every((pid, i) => pid === rules.S.seats[i].pid)) return { changed: false };
-    candidate.seats = seats.map(pid => rules.emptySeat(pid));
+    if (!renamed && seats.every((pid, i) => pid === rules.S.seats[i].pid)) return { changed: false };
+    if (active) preserveSeatingProtocol(candidate, seats);
+    else candidate.seats = seats.map(pid => rules.emptySeat(pid));
     const error = persist(candidate);
     return { error, changed: !error };
   }
@@ -189,7 +261,7 @@ function createGame(dir, rulesFile, { judgeSeating = false, fixedGameNumber = nu
       rules.S = state;
     },
     state: () => rules.S,
-    hasActivity: seatingLocked,
+    hasActivity,
     view() {
       const view = rules.buildView(overlayPhoto);
       const design = tournament?.design();
@@ -203,8 +275,8 @@ function createGame(dir, rulesFile, { judgeSeating = false, fixedGameNumber = nu
     },
     overlayPhoto,
     timer: () => rules.timerView(),
+    exportProtocol: () => rules.muExportData(),
     judgeState: () => ({ ...rules.stateMsg(), ...(judgeSeating ? { seating: currentSeating() } : {}) }),
-    seatingOpen: () => judgeSeating && !seatingLocked(),
     seatParticipants,
     nominationConfirmation(message) {
       const warning = rules.nominationWarning(message);

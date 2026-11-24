@@ -37,7 +37,6 @@ const gameText=v=>v.game?'Игра '+v.game:'';
 /* ---- Рассадка из MafiaUniverse ----
    На сайте рассадка видна только после входа, а вход закрыт капчей. Поэтому её читает закладка «Отправить в HUD»
    прямо со страницы «Игры» турнира, открытой у судьи, и передаёт в пульт через postMessage. */
-const MU_ORIGINS=['https://mafiauniverse.org','https://mafiaworld.org'];
 // Выполняется и в закладке на сайте MafiaUniverse, поэтому ничего не берёт снаружи.
 function muParse(doc,url){
   const txt=e=>(e&&e.textContent||'').replace(/\s+/g,' ').trim();
@@ -61,60 +60,15 @@ let ok=0,n=0;addEventListener('message',e=>{if(e.origin===H&&e.data&&e.data.app=
 const t=setInterval(()=>{if(ok){clearInterval(t);return}if(++n>240){clearInterval(t);alert('Пульт HUD не ответил. Войдите в пульт и нажмите закладку ещё раз.');return}try{w.postMessage({app:'mafiahud-mu',data:d},H)}catch(e){}},500)})()`;
   return 'javascript:'+encodeURIComponent(code);
 }
-/* ---- Экспорт на MafiaUniverse: закладка на странице протокола игры забирает игру из пульта и заполняет форму.
-   Сохраняет судья сам, кнопкой на сайте. Допы и штрафы закладка не трогает: их ставят на сайте. ---- */
-// Выполняется в закладке на сайте MafiaUniverse, поэтому ничего не берёт снаружи. dry — только проверить, ничего не меняя.
-function muFill(doc,d,dry){
-  const warn=[],jq=doc.defaultView&&doc.defaultView.jQuery;
-  const fire=el=>{if(jq)jq(el).trigger('change');else el.dispatchEvent(new Event('change',{bubbles:true}))};
-  const norm=v=>String(v||'').replace(/\s+/g,' ').trim().toLowerCase();
-  const rows={};
-  doc.querySelectorAll('input[name$=".Position"]').forEach(p=>{const m=p.name.match(/^GamePlayers\[(\d+)\]\.Position$/);if(m)rows[+p.value]=m[1]});
-  if(!Object.keys(rows).length)return {ok:false,warn:['На странице нет протокола игры.']};
-  const field=(k,name)=>doc.getElementById('GamePlayers_'+k+'__'+name);
-  const ROLE={'':'1',civ:'1',sheriff:'2',mafia:'3',don:'4'};
-  d.seats.forEach(s=>{
-    const k=rows[s.n];if(k==null){warn.push('На сайте нет места '+s.n);return}
-    const name=field(k,'Position').closest('tr').querySelector('.GamePlayers_Player_Name');
-    if(name&&s.nick&&norm(name.value)!==norm(s.nick))warn.push('Место '+s.n+': на сайте «'+name.value+'», в HUD «'+s.nick+'»');
-  });
-  if(dry)return {ok:true,warn};
-  const roles=d.seats.map(s=>[field(rows[s.n],'GameRoleId'),ROLE[s.role]||'1']).filter(([el])=>el);
-  // сайт сам следит, чтобы шериф был один, а мафии не больше двух, поэтому сначала все мирные, потом роли
-  roles.forEach(([el])=>{if(el.value!=='1'){el.value='1';fire(el)}});
-  roles.forEach(([el,v])=>{if(v!=='1'){el.value=v;fire(el)}});
-  d.seats.forEach(s=>{
-    const k=rows[s.n];if(k==null)return;
-    const tr=field(k,'Position').closest('tr'),foul=field(k,'Foul'),v=Math.min(5,Math.max(0,s.fouls|0));
-    if(foul){foul.value=v;const sp=tr.querySelector('.hasfoul');if(sp)sp.textContent=v?v:''}
-    const pu=String(s.n-1)===String(d.pu),kf=field(k,'KilledFirst'),bm=field(k,'BestMove');
-    if(kf)kf.value=pu?'True':'False';
-    if(bm){bm.value=pu?d.lh.map(x=>+x+1).join(','):'';bm.style.display=pu?'':'none'}
-  });
-  // баллы переносятся, только если судья ставил их в HUD, иначе не затираются поставленные на сайте
-  if(d.seats.some(x=>x.b||x.p||x.t))d.seats.forEach(x=>{
-    const k=rows[x.n];if(k==null)return;
-    [['b','BonusScore'],['p','PenaltyScore'],['t','TechPenaltyScore']].forEach(([key,name])=>{const el=field(k,name);if(el){el.value=(+x[key]||0).toFixed(2).replace('.',',');fire(el)}});
-  });
-  const win=doc.getElementById('GameWinnerId');
-  if(win&&d.winner){win.value=String(d.winner);fire(win)}
-  const note=doc.getElementById('Note');
-  if(note&&d.note){const cur=note.value.trim();note.value=!cur?d.note:cur.includes(d.note)?cur:cur+'\n\n'+d.note;fire(note)}
-  return {ok:true,warn};
-}
+// Закладка оператора открывает пульт этой игры и запрашивает актуальный протокол.
 function muFillBookmarklet(panelUrl){
-  const code=`(()=>{const P=${JSON.stringify(panelUrl)},H=new URL(P).origin;${muFill.toString()}
-if(!document.querySelector('input[name$=".Position"]')){alert('Откройте на MafiaUniverse протокол игры (редактирование игры) и нажмите закладку ещё раз.');return}
+  const code=`(()=>{const P=${JSON.stringify(panelUrl)},H=new URL(P).origin;${muFill.toString()}${resolveMuPlayers.toString()}${applyMuProtocol.toString()}
+if(!document.querySelector('input[name$=".Position"]')){alert('Откройте на MafiaUniverse редактирование игры.');return}
 const w=window.open(P,'mafiahud-panel');if(!w){alert('Браузер не дал открыть пульт HUD. Разрешите всплывающие окна для этого сайта.');return}
 let done=0,n=0;
 addEventListener('message',e=>{
-  if(done||e.origin!==H||!e.data||e.data.app!=='mafiahud-mu-export')return;done=1;
-  const d=e.data.data,gid=(location.pathname.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i)||[''])[0].toLowerCase();
-  const warn=[];if(d.game&&gid&&d.game.toLowerCase()!==gid)warn.push('В HUD сейчас рассажена другая игра MafiaUniverse.');
-  warn.push(...muFill(document,d,true).warn);
-  if(warn.length&&!confirm(warn.join('\\n')+'\\n\\nВсё равно заполнить протокол?'))return;
-  muFill(document,d,false);
-  alert('Протокол заполнен из HUD: роли, фолы, первый убиенный и лучший ход'+(d.seats.some(x=>x.b||x.p||x.t)?', допы и минусы':'')+(d.winner?', победа':'')+(d.note?', заметка с голосованиями':'')+'. Проверьте и нажмите «Сохранить».');
+  if(done||e.source!==w||e.origin!==H||!e.data||e.data.app!=='mafiahud-mu-export')return;done=1;
+  void applyMuProtocol(e.data.data);
 });
 const t=setInterval(()=>{if(done){clearInterval(t);return}if(++n>480){clearInterval(t);alert('Пульт HUD не ответил. Войдите в пульт и нажмите закладку ещё раз.');return}try{w.postMessage({app:'mafiahud-mu-get'},H)}catch(e){}},500)})()`;
   return 'javascript:'+encodeURIComponent(code);
